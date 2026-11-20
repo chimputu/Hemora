@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Enums ──
+
+enum UserRole {
+  DONOR
+  NURSE
+  DOCTOR
+  BANK_MANAGER
+  FACILITY_ADMIN
+  ADMIN
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+enum BloodComponent {
+  WHOLE_BLOOD
+  Packed_RBC
+  PLASMA
+  PLATELETS
+}
+
+enum Urgency {
+  ROUTINE
+  URGENT
+  EMERGENCY
+}
+
+enum RequisitionStatus {
+  PENDING
+  APPROVED
+  DISPATCHED
+  REJECTED
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+// ── Better Auth Core Models ──
+
+model User {
+  id            String           @id
+  name          String
+  email         String           @unique
+  emailVerified Boolean          @default(false)
+  image         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  // Better Auth Admin Plugin fields
+  role          UserRole         @default(DONOR)
+  banned        Boolean          @default(false)
+  banReason     String?
+  banExpires    DateTime?
+
+  // Hemora Clinical & Donor Profile fields
+  bloodGroup    BloodGroup?
+  phone         String?
+  lastDonation  DateTime?
+  eligible      Boolean          @default(true)
+  facilityId    String?
+  facility      Facility?        @relation(fields: [facilityId], references: [id])
+  licenseNo     String?
+
+  sessions      Session[]
+  accounts      Account[]
+  requisitions  Requisition[]
+  transfusions  TransfusionLog[]
+  campaignInvitations CampaignInvitation[]
+
+  @@index([role])
+  @@index([email])
+  @@index([facilityId])
+  @@map("user")
+}
+
+model Session {
+  id             String   @id
+  expiresAt      DateTime
+  token          String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  ipAddress      String?
+  userAgent      String?
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy String?
+
+  @@index([userId])
+  @@index([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ── Hemora Domain Models ──
+
+model Facility {
+  id           String      @id @default(cuid())
+  name         String
+  type         String
+  address      String?
+  phone        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  users        User[]
+  requisitions Requisition[]
+
+  @@index([type])
+  @@map("facility")
+}
+
+model BloodInventory {
+  id           String         @id @default(cuid())
+  bloodGroup   BloodGroup
+  component    BloodComponent @default(WHOLE_BLOOD)
+  units        Int            @default(0)
+  minThreshold Int            @default(15)
+  expiresAt    DateTime?
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([bloodGroup, component])
+  @@index([bloodGroup])
+  @@map("blood_inventory")
+}
+
+model Requisition {
+  id            String            @id @default(cuid())
+  requesterId   String
+  requester     User              @relation(fields: [requesterId], references: [id])
+  patientName   String?
+  patientRef    String?
+  bloodGroup    BloodGroup
+  component     BloodComponent    @default(WHOLE_BLOOD)
+  unitsNeeded   Int
+  urgency       Urgency           @default(ROUTINE)
+  status        RequisitionStatus @default(PENDING)
+  clinicalNote  String?
+  facilityId    String?
+  facility      Facility?         @relation(fields: [facilityId], references: [id])
+  approvedBy    String?
+  approvedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([status])
+  @@index([requesterId])
+  @@index([facilityId])
+  @@map("requisition")
+}
+
+model TransfusionLog {
+  id             String         @id @default(cuid())
+  administeredBy String
+  staff          User           @relation(fields: [administeredBy], references: [id])
+  patientRef     String
+  bloodGroup     BloodGroup
+  component      BloodComponent @default(WHOLE_BLOOD)
+  unitsUsed      Int            @default(1)
+  vitalsStable   Boolean        @default(true)
+  notes          String?
+  createdAt      DateTime       @default(now())
+
+  @@index([administeredBy])
+  @@map("transfusion_log")
+}
+
+model Campaign {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  bloodGroup  BloodGroup?
+  targetUnits Int             @default(10)
+  status      CampaignStatus  @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdBy   String
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  invitations CampaignInvitation[]
+
+  @@index([status])
+  @@map("campaign")
+}
+
+model CampaignInvitation {
+  id          String          @id @default(cuid())
+  campaignId  String
+  campaign    Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  donorId     String
+  donor       User            @relation(fields: [donorId], references: [id])
+  status      InvitationStatus @default(PENDING)
+  sentAt      DateTime        @default(now())
+  respondedAt DateTime?
+
+  @@index([campaignId])
+  @@index([donorId])
+  @@map("campaign_invitation")
+}

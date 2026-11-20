@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+
+# Expo
+.expo/
+web-build/
+
+# Generated native folders
+ios/
+android/
+
+# Junie session artifacts (keep plans)
+.june/sessions/

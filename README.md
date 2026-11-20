@@ -1,4 +1,4 @@
-# HEMORA — AI-Based Blood Forecasting and Donor Mobilisation System
+ther# HEMORA — AI-Based Blood Forecasting and Donor Mobilisation System
 
 An academic capstone prototype that integrates real-time blood inventory management, role-based hospital workflows, AI-powered demand forecasting, and donor mobilisation campaigns into a single mobile-first platform.
 
