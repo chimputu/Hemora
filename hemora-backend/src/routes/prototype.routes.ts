@@ -206,11 +206,14 @@ router.post("/forecast", requirePermission({ forecast: ["view"] }), async (req, 
 
         try {
             const aiUrl = process.env.AI_SERVICE_URL || "http://localhost:8000";
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
             const aiRes = await fetch(`${aiUrl}/predict`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ blood_group: bloodGroup, lead_time_days: 7 }),
-            });
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
             if (!aiRes.ok) throw new Error("AI offline");
             const aiData = (await aiRes.json()) as { forecasted_demand_units: number };
             predictedDemand = Math.ceil(aiData.forecasted_demand_units);
@@ -248,11 +251,14 @@ router.post("/forecast/all", requirePermission({ forecast: ["view"] }), async (_
         let engine = "XGBoost-FastAPI";
         
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
             const aiRes = await fetch(`${aiUrl}/predict/all`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ lead_time_days: 7 }),
-            });
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
             if (!aiRes.ok) throw new Error("AI offline");
             const aiData = (await aiRes.json()) as { forecasts: Record<string, number> };
             forecasts = aiData.forecasts;
@@ -298,7 +304,11 @@ router.get("/forecast/model-info", requirePermission({ forecast: ["view"] }), as
         const aiUrl = process.env.AI_SERVICE_URL || "http://localhost:8000";
         
         try {
-            const aiRes = await fetch(`${aiUrl}/model-info`);
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const aiRes = await fetch(`${aiUrl}/model-info`, {
+                signal: controller.signal,
+            }).finally(() => clearTimeout(timeoutId));
             if (!aiRes.ok) throw new Error("AI offline");
             const info = await aiRes.json();
             res.json(info);
@@ -448,6 +458,21 @@ router.get("/me", requireAuth(), async (req: AuthenticatedRequest, res) => {
     }
 });
 
+// 10a. GET User Role (lightweight, for mobile navigation guards)
+router.get("/role", requireAuth(), async (req: AuthenticatedRequest, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { id: req.user!.id },
+            select: { role: true },
+        });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        res.json({ role: user.role });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to load role" });
+    }
+});
+
 // 11. GET All Users (Admin only)
 router.get("/users", requirePermission({ user: ["list"] }), async (_req, res) => {
     try {
@@ -468,6 +493,81 @@ router.get("/users", requirePermission({ user: ["list"] }), async (_req, res) =>
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Failed to load users" });
+    }
+});
+
+// 11a. POST Create User (admin only — creates or updates any user record)
+router.post("/users", requireAuth(), requirePermission({ user: ["create"] }), async (req, res) => {
+    try {
+        const { id, name, email, bloodGroup, role } = req.body as {
+            id: string;
+            name: string;
+            email: string;
+            bloodGroup?: string;
+            role?: string;
+        };
+
+        if (!id || !name || !email) {
+            return res.status(400).json({ error: "id, name, and email are required" });
+        }
+
+        const user = await prisma.user.upsert({
+            where: { id },
+            create: {
+                id,
+                name,
+                email,
+                role: (role || "DONOR") as any,
+                bloodGroup: (bloodGroup || null) as any,
+            },
+            update: {
+                name,
+                bloodGroup: (bloodGroup || null) as any,
+                role: (role || "DONOR") as any,
+            },
+        });
+
+        res.status(201).json(user);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to create user" });
+    }
+});
+
+// 11b. POST Self-Register (any authenticated user creating their own DB record after sign-up)
+router.post("/users/self", requireAuth(), async (req: AuthenticatedRequest, res) => {
+    try {
+        const authUserId = req.user?.id;
+        if (!authUserId) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        const { name, email, bloodGroup } = req.body as {
+            name?: string;
+            email?: string;
+            bloodGroup?: string;
+        };
+
+        // Only allow creating/updating the authenticated user's own record
+        const user = await prisma.user.upsert({
+            where: { id: authUserId },
+            create: {
+                id: authUserId,
+                name: name || authUserId,
+                email: email || authUserId,
+                role: "DONOR",
+                bloodGroup: (bloodGroup || null) as any,
+            },
+            update: {
+                name: name || undefined,
+                bloodGroup: (bloodGroup || null) as any,
+            },
+        });
+
+        res.status(201).json(user);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to create user profile" });
     }
 });
 

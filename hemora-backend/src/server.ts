@@ -1,8 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { toNodeHandler } from "better-auth/node";
-import { auth } from "./lib/auth.js";
 import prototypeRoutes from "./routes/prototype.routes.js";
 
 const app = express();
@@ -25,6 +23,7 @@ app.use(
             const allowed = [
                 "hemora://",
                 "http://localhost:8081",
+                "http://127.0.0.1:8081",
             ];
             // Allow Expo dev-client URLs from any local network (phone on Wi-Fi)
             if (!origin || allowed.includes(origin) || /^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):8081$/.test(origin)) {
@@ -38,9 +37,6 @@ app.use(
     })
 );
 
-// CRITICAL: Mount Better Auth BEFORE express.json()
-app.all("/api/auth/*splat", toNodeHandler(auth));
-
 app.use(express.json());
 app.use("/api/hemora", prototypeRoutes);
 
@@ -49,5 +45,5 @@ app.get("/health", (_req, res) => {
 });
 
 app.listen(port, "0.0.0.0", () => {
-    console.log(`Hemora Express + Better Auth server running on http://0.0.0.0:${port}`);
+    console.log(`Hemora Express + Supabase Auth server running on http://0.0.0.0:${port}`);
 });

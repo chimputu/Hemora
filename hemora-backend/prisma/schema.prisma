@@ -13,8 +13,7 @@ enum UserRole {
   DONOR
   NURSE
   DOCTOR
-  BANK_MANAGER
-  FACILITY_ADMIN
+  MANAGER
   ADMIN
 }
 
@@ -63,7 +62,7 @@ enum InvitationStatus {
   EXPIRED
 }
 
-// ── Better Auth Core Models ──
+// ── Hemora Domain Models ──
 
 model User {
   id            String           @id
@@ -74,7 +73,7 @@ model User {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
-  // Better Auth Admin Plugin fields
+  // Role & Admin fields
   role          UserRole         @default(DONOR)
   banned        Boolean          @default(false)
   banReason     String?
@@ -89,8 +88,6 @@ model User {
   facility      Facility?        @relation(fields: [facilityId], references: [id])
   licenseNo     String?
 
-  sessions      Session[]
-  accounts      Account[]
   requisitions  Requisition[]
   transfusions  TransfusionLog[]
   campaignInvitations CampaignInvitation[]
@@ -100,57 +97,6 @@ model User {
   @@index([facilityId])
   @@map("user")
 }
-
-model Session {
-  id             String   @id
-  expiresAt      DateTime
-  token          String   @unique
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  ipAddress      String?
-  userAgent      String?
-  userId         String
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  impersonatedBy String?
-
-  @@index([userId])
-  @@index([token])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id
-  accountId             String
-  providerId            String
-  userId                String
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  accessToken           String?
-  refreshToken          String?
-  idToken               String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-
-  @@index([userId])
-  @@map("account")
-}
-
-model Verification {
-  id         String   @id
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@index([identifier])
-  @@map("verification")
-}
-
-// ── Hemora Domain Models ──
 
 model Facility {
   id           String      @id @default(cuid())

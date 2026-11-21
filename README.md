@@ -7,7 +7,7 @@ An academic capstone prototype that integrates real-time blood inventory managem
 HEMORA addresses blood shortages and inefficient donor mobilisation by providing:
 
 - **Real-time blood inventory** tracking across 8 blood groups and 4 components.
-- **Role-based dashboards** for 6 user types: System Admin, Blood Bank Manager, Facility Admin, Doctor, Nurse, and Blood Donor.
+- **Role-based dashboards** for 5 user types: System Admin, Manager, Doctor, Nurse, and Blood Donor.
 - **AI-powered demand forecasting** using a Random Forest model trained on historical blood demand data.
 - **Donor mobilisation campaigns** with automated invitations and response tracking.
 - **Blood request workflows** from doctor/nurse creation through bank manager approval to dispatch.
@@ -17,8 +17,8 @@ HEMORA addresses blood shortages and inefficient donor mobilisation by providing
 | Layer | Technology |
 |---|---|
 | **Mobile** | Expo SDK 55, React Native, TypeScript, Expo Router |
-| **Backend** | Node.js, Express.js, TypeScript, Better Auth |
-| **Database** | PostgreSQL, Prisma ORM |
+| **Backend** | Node.js, Express.js, TypeScript, Supabase Auth |
+| **Database** | Supabase PostgreSQL, Prisma ORM |
 | **AI Service** | Python, FastAPI, Scikit-learn, Pandas, NumPy |
 | **UI** | Lucide React Native, React Native Reanimated, React Hook Form, Zod, TanStack Query |
 
@@ -26,7 +26,7 @@ HEMORA addresses blood shortages and inefficient donor mobilisation by providing
 
 ```
 Hemora/
-├── hemora-backend/    # Express REST API with Better Auth + Prisma
+├── hemora-backend/    # Express REST API with Supabase Auth + Prisma
 ├── hemora-mobile/     # Expo React Native mobile application
 └── hemora-ai/         # Python FastAPI AI forecasting service
 ```
@@ -34,19 +34,15 @@ Hemora/
 ## Prerequisites
 
 - **Node.js** 18+ and npm
-- **PostgreSQL** 14+ running locally
+- **Supabase** project with PostgreSQL database
 - **Python** 3.9+ (for AI service)
 - **Expo Go** app on your mobile device or an emulator
 
 ## Setup Instructions
 
-### 1. Database
+### 1. Supabase Setup
 
-Create a PostgreSQL database:
-
-```bash
-createdb hemora_db
-```
+Create a Supabase project at [supabase.com](https://supabase.com) and note your project URL and keys.
 
 ### 2. Backend
 
@@ -63,9 +59,9 @@ cp .env.example .env   # or create .env manually
 Set the following environment variables in `.env`:
 
 ```
-DATABASE_URL="postgresql://postgres:<your-password>@localhost:5432/hemora_db?schema=public"
-BETTER_AUTH_SECRET="your-secret-key-here"
-BETTER_AUTH_URL="http://localhost:5000"
+SUPABASE_URL="https://<your-project-ref>.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="<your-service-role-key>"
+DATABASE_URL="postgresql://postgres.<your-project-ref>:<password>@db.<your-project-ref>.supabase.co:5432/postgres?schema=public"
 AI_SERVICE_URL="http://localhost:8000"
 PORT=5000
 ```
@@ -95,7 +91,11 @@ cd hemora-mobile
 npm install
 
 # Configure environment
-echo 'EXPO_PUBLIC_API_URL="http://<your-local-ip>:5000"' > .env
+cat > .env << EOF
+EXPO_PUBLIC_API_URL="http://<your-local-ip>:5000"
+EXPO_PUBLIC_SUPABASE_URL="https://<your-project-ref>.supabase.co"
+EXPO_PUBLIC_SUPABASE_KEY="<your-anon-key>"
+EOF
 ```
 
 Replace `<your-local-ip>` with your machine's local IP address (e.g., `192.168.1.100`).
@@ -136,8 +136,8 @@ The seed script creates 10 demo accounts. All accounts share the same password:
 | Email | Name | Role |
 |---|---|---|
 | `admin@hemora.zm` | System Administrator | System Admin |
-| `bankmanager@hemora.zm` | Mulenga Banda | Blood Bank Manager |
-| `facilityadmin@hemora.zm` | Thandiwe Phiri | Facility Admin |
+| `bankmanager@hemora.zm` | Mulenga Banda | Manager |
+| `facilityadmin@hemora.zm` | Thandiwe Phiri | Manager |
 | `doctor@hemora.zm` | Dr. Chanda Mwale | Doctor |
 | `doctor2@hemora.zm` | Dr. Namunda Zulu | Doctor |
 | `nurse@hemora.zm` | Grace Tembo | Nurse |

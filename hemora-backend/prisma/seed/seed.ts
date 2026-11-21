@@ -1,5 +1,4 @@
 import { PrismaClient, UserRole, BloodGroup, BloodComponent, Urgency, RequisitionStatus, CampaignStatus, InvitationStatus } from "../../src/generated/prisma";
-import { hashPassword } from "better-auth/crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import dotenv from "dotenv";
 
@@ -81,13 +80,13 @@ async function main() {
         {
             email: "bankmanager@hemora.zm",
             name: "Mulenga Banda",
-            role: UserRole.BANK_MANAGER,
+            role: UserRole.MANAGER,
             facilityId: bloodBank.id,
         },
         {
             email: "facilityadmin@hemora.zm",
             name: "Thandiwe Phiri",
-            role: UserRole.FACILITY_ADMIN,
+            role: UserRole.MANAGER,
             facilityId: generalHospital.id,
         },
         {
@@ -170,26 +169,12 @@ async function main() {
             },
         });
 
-        // Create Better Auth account with password hash
-        const passwordHash = await hashPassword(DEMO_PASSWORD);
-
-        await prisma.account.upsert({
-            where: {
-                id: `account-${u.email.split("@")[0]}`,
-            },
-            update: {},
-            create: {
-                id: `account-${u.email.split("@")[0]}`,
-                userId: user.id,
-                providerId: "credential",
-                accountId: user.id,
-                password: passwordHash,
-            },
-        });
-
         createdUsers.push(user);
         console.log(`  ✅ User: ${u.name} (${u.email}) — ${u.role}`);
     }
+
+    // Note: Supabase Auth manages user accounts natively.
+    // Passwords are set via Supabase Auth API, not stored in Prisma.
 
     // ── Blood Inventory ──
     const bloodGroups: BloodGroup[] = [
@@ -241,7 +226,7 @@ async function main() {
     // ── Requisitions ──
     const doctor = createdUsers.find((u: any) => u.role === UserRole.DOCTOR);
     const doctor2 = createdUsers.find((u: any) => u.email === "doctor2@hemora.zm");
-    const bankManager = createdUsers.find((u: any) => u.role === UserRole.BANK_MANAGER);
+    const bankManager = createdUsers.find((u: any) => u.email === "bankmanager@hemora.zm");
 
     if (doctor && bankManager) {
         const requisitions = [
@@ -379,8 +364,8 @@ async function main() {
     console.log("\n🔑 Demo Password for all accounts: Demo1234!");
     console.log("\n📋 Demo Accounts:");
     console.log(`  admin@hemora.zm        — System Administrator`);
-    console.log(`  bankmanager@hemora.zm  — Blood Bank Manager`);
-    console.log(`  facilityadmin@hemora.zm — Facility Administrator`);
+    console.log(`  bankmanager@hemora.zm  — Blood Bank Manager (MANAGER role)`);
+    console.log(`  facilityadmin@hemora.zm — Facility Manager (MANAGER role)`);
     console.log(`  doctor@hemora.zm       — Doctor (Kafue General Hospital)`);
     console.log(`  nurse@hemora.zm        — Nurse (Kafue General Hospital)`);
     console.log(`  donor@hemora.zm        — Blood Donor`);

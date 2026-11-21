@@ -8,22 +8,21 @@ HEMORA is a three-tier application consisting of a React Native mobile frontend,
 graph TB
     subgraph Mobile["hemora-mobile (Expo SDK 55)"]
         D1[Donor Dashboard]
-        D2[Bank Manager Dashboard]
+        D2[Manager Dashboard]
         D3[Doctor Dashboard]
         D4[Nurse Dashboard]
         D5[Admin Dashboard]
-        D6[Facility Admin Dashboard]
         A[Auth Screens]
     end
 
     subgraph Backend["hemora-backend (Express.js)"]
-        RA[Better Auth]
+        RA[Supabase Auth]
         RB[RBAC Middleware]
         RC[Prototype Routes]
         RP[Prisma ORM]
     end
 
-    subgraph Database["PostgreSQL"]
+    subgraph Database["Supabase PostgreSQL"]
         DB[(hemora_db)]
     end
 
@@ -38,7 +37,6 @@ graph TB
     D3 --> RB
     D4 --> RB
     D5 --> RB
-    D6 --> RB
     RB --> RC
     RC --> RP
     RP --> DB
@@ -61,10 +59,10 @@ The mobile application built with Expo SDK 55 and React Native.
 | **Forms** | React Hook Form + Zod validation |
 | **Animations** | React Native Reanimated 4.2.1 |
 | **Icons** | Lucide React Native |
-| **Auth Client** | Better Auth client with cookie-based sessions |
+| **Auth Client** | Supabase Auth client with JWT-based sessions |
 
 **Structure:**
-- `app/(main)/_dashboard/` — 6 role-specific dashboards
+- `app/(main)/_dashboard/` — 5 role-specific dashboards
 - `app/(auth)/` — Sign-in, sign-up, forgot password screens
 - `app/_layout.tsx` — Root layout with QueryClient provider and auth state
 - `components/` — Reusable UI components (EmptyState, StatCard, etc.)
@@ -72,26 +70,27 @@ The mobile application built with Expo SDK 55 and React Native.
 
 ### hemora-backend
 
-The REST API built with Express.js, Better Auth, and Prisma ORM.
+The REST API built with Express.js, Supabase JWT verification, and Prisma ORM.
 
 | Aspect | Detail |
 |---|---|
 | **Framework** | Express.js 5.x |
 | **Language** | TypeScript |
-| **Authentication** | Better Auth with credential provider |
-| **Authorization** | Custom RBAC middleware with Better Auth access control |
+| **Authentication** | Supabase Auth (JWT verification via JWKs) |
+| **Authorization** | Custom RBAC middleware with role-based permission statements |
 | **ORM** | Prisma 7.x with PostgreSQL adapter |
-| **Database** | PostgreSQL 14+ |
+| **Database** | Supabase PostgreSQL |
 
 **Structure:**
 - `src/server.ts` — Entry point, middleware setup, route mounting
-- `src/lib/auth.ts` — Better Auth configuration with custom user schema
+- `src/lib/jwt-verify.ts` — Supabase JWT verification against JWKs
+- `src/lib/supabase.ts` — Supabase admin client for user lookup
 - `src/lib/permissions.ts` — RBAC statement and role definitions
 - `src/lib/prisma.ts` — Prisma client instance
 - `src/middleware/rbac.middleware.ts` — Permission-checking middleware
 - `src/routes/prototype.routes.ts` — All 20 API endpoints
 - `prisma/schema.prisma` — Database schema
-- `prisma/seed.ts` — Demo data seed script
+- `prisma/seed/seed.ts` — Demo data seed script
 
 ### hemora-ai
 
@@ -185,7 +184,7 @@ All endpoints are prefixed with `/api/hemora/`.
 - `id` (String, PK), `name`, `email` (unique), `role` (UserRole enum)
 - `bloodGroup` (BloodGroup enum, optional), `phone`, `eligible`
 - `facilityId` (FK → Facility), `licenseNo`
-- `banned`, `banReason`, `banExpires` (Better Auth Admin fields)
+- `banned`, `banReason`, `banExpires` (Admin moderation fields)
 
 **Facility**
 - `id` (String, PK), `name`, `type` (Hospital/Blood Bank/Clinic)
@@ -219,7 +218,7 @@ All endpoints are prefixed with `/api/hemora/`.
 
 | Enum | Values |
 |---|---|
-| **UserRole** | DONOR, NURSE, DOCTOR, BANK_MANAGER, FACILITY_ADMIN, ADMIN |
+| **UserRole** | DONOR, NURSE, DOCTOR, MANAGER, ADMIN |
 | **BloodGroup** | A_POS, A_NEG, B_POS, B_NEG, AB_POS, AB_NEG, O_POS, O_NEG |
 | **BloodComponent** | WHOLE_BLOOD, Packed_RBC, PLASMA, PLATELETS |
 | **Urgency** | ROUTINE, URGENT, EMERGENCY |
@@ -229,35 +228,38 @@ All endpoints are prefixed with `/api/hemora/`.
 
 ## RBAC Permission Matrix
 
-| Permission | DONOR | NURSE | DOCTOR | BANK_MANAGER | FACILITY_ADMIN | ADMIN |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `inventory: read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `inventory: update` | | | | ✅ | | ✅ |
-| `inventory: dispatch` | | | | ✅ | | ✅ |
-| `requisition: create` | | ✅ | ✅ | | ✅ | ✅ |
-| `requisition: read` | | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `requisition: approve` | | | ✅ | ✅ | ✅ | ✅ |
-| `requisition: reject` | | | | ✅ | | ✅ |
-| `transfusion: create` | | ✅ | | | | ✅ |
-| `transfusion: read` | | ✅ | ✅ | | ✅ | ✅ |
-| `forecast: view` | | | | ✅ | ✅ | ✅ |
-| `forecast: trigger` | | | | ✅ | | ✅ |
-| `campaign: create` | | | | ✅ | | ✅ |
-| `campaign: read` | | | | ✅ | | ✅ |
-| `user: create` | | | | | | ✅ |
-| `user: list` | | | | | | ✅ |
-| `user: set-role` | | | | | | ✅ |
-| `user: ban` | | | | | | ✅ |
-| `user: delete` | | | | | | ✅ |
+| Permission | DONOR | NURSE | DOCTOR | MANAGER | ADMIN |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `inventory: read` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `inventory: update` | | | | ✅ | ✅ |
+| `inventory: dispatch` | | | | ✅ | ✅ |
+| `requisition: create` | | ✅ | ✅ | | ✅ |
+| `requisition: read` | | ✅ | ✅ | ✅ | ✅ |
+| `requisition: approve` | | | ✅ | ✅ | ✅ |
+| `requisition: reject` | | | | ✅ | ✅ |
+| `transfusion: create` | | ✅ | | | ✅ |
+| `transfusion: read` | | ✅ | ✅ | | ✅ |
+| `forecast: view` | | | | ✅ | ✅ |
+| `forecast: trigger` | | | | ✅ | ✅ |
+| `campaign: create` | | | | ✅ | ✅ |
+| `campaign: read` | | | | ✅ | ✅ |
+| `user: create` | | | | | ✅ |
+| `user: list` | | | | | ✅ |
+| `user: set-role` | | | | | ✅ |
+| `user: ban` | | | | | ✅ |
+| `user: delete` | | | | | ✅ |
 
 ## Data Flow
 
 ### Authentication Flow
 1. User enters credentials on the Sign In screen.
-2. Mobile app calls `POST /api/hemora/auth/sign-in`.
-3. Better Auth validates credentials and sets a session cookie.
-4. Subsequent requests include the cookie automatically.
-5. RBAC middleware checks the user's role and permissions for each endpoint.
+2. Mobile app calls Supabase Auth `signInWithPassword()` to validate credentials.
+3. Supabase returns a JWT token stored in the mobile app's secure storage.
+4. Subsequent API requests include the JWT via the `Authorization: Bearer` header.
+5. Backend verifies the JWT signature against Supabase's public JWKs.
+6. Backend looks up the user in the `user` table for role and profile data.
+7. If the user exists in Auth but not in the database, a minimal DB record is auto-created.
+8. RBAC middleware checks the user's role and permissions for each endpoint.
 
 ### Requisition Creation Flow
 1. Doctor fills the blood request form and submits.
