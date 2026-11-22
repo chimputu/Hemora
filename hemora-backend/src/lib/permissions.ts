@@ -19,10 +19,10 @@ type PermissionValue<T extends PermissionKey> = Statements[T][number];
 export const roles: Record<string, Record<PermissionKey, PermissionValue<PermissionKey>[]>> = {
     DONOR: {
         inventory: ["read"],
-        requisition: [],
+        requisition: ["read"],
         transfusion: [],
         forecast: [],
-        campaign: [],
+        campaign: ["read"],
         user: [],
     },
     NURSE: {

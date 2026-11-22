@@ -62,6 +62,15 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum NotificationType {
+  INVITATION
+  CAMPAIGN_JOIN
+  CAMPAIGN_ACCEPT
+  CAMPAIGN_DECLINE
+  REQUISITION
+  SYSTEM
+}
+
 // ── Hemora Domain Models ──
 
 model User {
@@ -91,6 +100,7 @@ model User {
   requisitions  Requisition[]
   transfusions  TransfusionLog[]
   campaignInvitations CampaignInvitation[]
+  notifications Notification[]
 
   @@index([role])
   @@index([email])
@@ -201,4 +211,20 @@ model CampaignInvitation {
   @@index([campaignId])
   @@index([donorId])
   @@map("campaign_invitation")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  relatedId String?
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([userId, isRead])
+  @@map("notification")
 }

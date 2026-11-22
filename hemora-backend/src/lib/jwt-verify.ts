@@ -1,5 +1,4 @@
-import { jwtVerify } from "jose";
-import { supabaseAdmin } from "./supabase.js";
+import { jwtVerify, importJWK } from "jose";
 import { prisma } from "./prisma.js";
 
 /**
@@ -8,6 +7,7 @@ import { prisma } from "./prisma.js";
 export interface SupabaseJWTPayload {
   sub: string;
   email: string;
+  iss: string;
   aud: string;
   exp: number;
   iat: number;
@@ -41,7 +41,7 @@ async function getJwks() {
     return cachedJwks.keys;
   }
 
-  const jwksResponse = await fetch(`${process.env.SUPABASE_URL!}/.well-known/jwks.json`);
+  const jwksResponse = await fetch(`${process.env.SUPABASE_URL!}/auth/v1/.well-known/jwks.json`);
   if (!jwksResponse.ok) {
     throw new Error("Failed to fetch Supabase JWKs");
   }
@@ -67,16 +67,30 @@ export async function verifyAuthHeader(authHeader: string): Promise<VerifyResult
     throw new Error("Missing authorization token");
   }
 
-  // Get JWKs from Supabase (cached)
+  // Verify JWT — find the matching key by kid and import it
   const jwksKeys = await getJwks();
-
-  // Verify JWT
-  const verified = await jwtVerify(token, async () => {
-    const keys = await getJwks();
-    return keys[0] as any;
-  });
+  const tokenHeader = JSON.parse(Buffer.from(token.split(".")[0], "base64").toString());
+  const matchingKey = jwksKeys.find((k: any) => k.kid === tokenHeader.kid);
+  if (!matchingKey) {
+    throw new Error("No matching JWK found for token kid: " + tokenHeader.kid);
+  }
+  const cryptoKey = await importJWK(matchingKey, "ES256");
+  const verified = await jwtVerify(token, cryptoKey);
 
   const payload = verified.payload as unknown as SupabaseJWTPayload;
+
+  // Validate issuer claim — reject tokens from unexpected Supabase projects
+  // Supabase appends "/auth/v1" to the project URL in the issuer claim,
+  // so use startsWith() instead of strict equality.
+  const expectedIssuer = process.env.SUPABASE_URL;
+  if (expectedIssuer && !payload.iss.startsWith(expectedIssuer)) {
+    throw new Error("Invalid token issuer");
+  }
+
+  // Validate audience claim — reject tokens not intended for authenticated users
+  if (payload.aud !== "authenticated") {
+    throw new Error("Invalid token audience");
+  }
 
   // Check user cache first
   const cached = userCache.get(payload.sub);
@@ -84,83 +98,44 @@ export async function verifyAuthHeader(authHeader: string): Promise<VerifyResult
     return { payload, user: cached.user };
   }
 
-  // Look up user in our database for role info
+  // Look up user in our database for role info using Prisma.
+  // If no DB record exists, auto-create a minimal record so the user can
+  // authenticate and then complete registration via POST /users/self.
+  // This prevents account lockout when Supabase Auth succeeds but the
+  // database record was never created (e.g. admin-created Supabase users).
   let user: NonNullable<VerifyResult["user"]>;
   try {
-    const { data } = await supabaseAdmin
-      .from("user")
-      .select("id, email, name, role, facilityId, bloodGroup")
-      .eq("id", payload.sub)
-      .single();
+    let dbUser = await prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
 
-    if (data) {
-      user = {
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        role: data.role,
-        facilityId: data.facilityId,
-        bloodGroup: data.bloodGroup,
-      };
-    } else {
-      // User not found in DB — auto-sync by creating a minimal record
-      // This closes the auth-to-DB sync gap for users whose sign-up backend call failed
-      try {
-        const dbUser = await prisma.user.create({
-          data: {
-            id: payload.sub,
-            email: payload.email,
-            name: payload.email.split("@")[0],
-            role: "DONOR",
-          },
-        });
-        console.log(`[Auth Sync] Auto-created DB record for user ${payload.sub}`);
-        user = {
-          id: dbUser.id,
-          email: dbUser.email,
-          name: dbUser.name,
-          role: dbUser.role,
-          facilityId: dbUser.facilityId ?? undefined,
-          bloodGroup: dbUser.bloodGroup ?? undefined,
-        };
-      } catch (syncError) {
-        // If auto-create fails (e.g., unique constraint conflict), fall back to minimal profile
-        console.warn(`[Auth Sync] Failed to auto-create DB record for user ${payload.sub}:`, syncError);
-        user = {
-          id: payload.sub,
-          email: payload.email,
-          role: "DONOR",
-        };
-      }
-    }
-  } catch {
-    // User not found in DB — auto-sync by creating a minimal record
-    try {
-      const dbUser = await prisma.user.create({
+    if (!dbUser) {
+      // Auto-create a minimal user record from JWT claims
+      const email = payload.email;
+      const nameFromToken = (verified.payload as any).user_metadata?.name || email.split("@")[0] || "User";
+      dbUser = await prisma.user.create({
         data: {
           id: payload.sub,
-          email: payload.email,
-          name: payload.email.split("@")[0],
+          email,
+          name: nameFromToken,
           role: "DONOR",
         },
       });
-      console.log(`[Auth Sync] Auto-created DB record for user ${payload.sub}`);
-      user = {
-        id: dbUser.id,
-        email: dbUser.email,
-        name: dbUser.name,
-        role: dbUser.role,
-        facilityId: dbUser.facilityId ?? undefined,
-        bloodGroup: dbUser.bloodGroup ?? undefined,
-      };
-    } catch (syncError) {
-      console.warn(`[Auth Sync] Failed to auto-create DB record for user ${payload.sub}:`, syncError);
-      user = {
-        id: payload.sub,
-        email: payload.email,
-        role: "DONOR",
-      };
+      console.log(`Auto-created user record for ${email} (id: ${payload.sub})`);
     }
+
+    user = {
+      id: dbUser.id,
+      email: dbUser.email,
+      name: dbUser.name ?? undefined,
+      role: dbUser.role ?? undefined,
+      facilityId: dbUser.facilityId ?? undefined,
+      bloodGroup: dbUser.bloodGroup ?? undefined,
+    };
+  } catch (err: any) {
+    // For DB connection issues or other errors, return 401
+    console.error("User lookup/creation failed:", err.message || err);
+    throw new Error("Authentication failed");
   }
 
   // Cache the result

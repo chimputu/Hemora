@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyAuthHeader } from "../lib/jwt-verify.js";
 import { userHasPermission } from "../lib/permissions.js";
+import { prisma } from "../lib/prisma.js";
 
 export interface AuthenticatedRequest extends Request {
     user?: {
@@ -27,6 +28,25 @@ export function requireAuth() {
                 return res.status(401).json({ error: "Unauthorized: User not found" });
             }
 
+            // Check if user is banned
+            const dbUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: { banned: true, banExpires: true },
+            });
+            if (dbUser?.banned) {
+                // Allow access if ban has expired
+                if (dbUser.banExpires && new Date(dbUser.banExpires) > new Date()) {
+                    return res.status(403).json({ error: "Forbidden: Account is suspended" });
+                }
+                // If ban has no expiry or has expired, clear the ban flag
+                if (!dbUser.banExpires || new Date(dbUser.banExpires) <= new Date()) {
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: { banned: false },
+                    });
+                }
+            }
+
             req.user = {
                 id: user.id,
                 email: user.email,
@@ -36,8 +56,7 @@ export function requireAuth() {
                 bloodGroup: user.bloodGroup,
             };
             return next();
-        } catch (error) {
-            console.error("Auth Middleware Error:", error);
+        } catch {
             return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
         }
     };
@@ -57,6 +76,25 @@ export function requirePermission(permissions: Record<string, string[]>) {
                 return res.status(401).json({ error: "Unauthorized: User not found" });
             }
 
+            // Check if user is banned
+            const dbUser = await prisma.user.findUnique({
+                where: { id: user.id },
+                select: { banned: true, banExpires: true },
+            });
+            if (dbUser?.banned) {
+                // Allow access if ban has expired
+                if (dbUser.banExpires && new Date(dbUser.banExpires) > new Date()) {
+                    return res.status(403).json({ error: "Forbidden: Account is suspended" });
+                }
+                // If ban has no expiry or has expired, clear the ban flag
+                if (!dbUser.banExpires || new Date(dbUser.banExpires) <= new Date()) {
+                    await prisma.user.update({
+                        where: { id: user.id },
+                        data: { banned: false },
+                    });
+                }
+            }
+
             if (!userHasPermission(user.role, permissions as Parameters<typeof userHasPermission>[1])) {
                 return res.status(403).json({
                     error: "Forbidden: Insufficient permissions for this role",
@@ -72,8 +110,7 @@ export function requirePermission(permissions: Record<string, string[]>) {
                 bloodGroup: user.bloodGroup,
             };
             return next();
-        } catch (error) {
-            console.error("RBAC Middleware Error:", error);
+        } catch {
             return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
         }
     };

@@ -17,7 +17,7 @@ const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
 });
 
 // ── Demo accounts ──
-const DEMO_PASSWORD = "Demo1234!";
+const DEMO_PASSWORD = "password123";
 
 const users = [
     { email: "admin@hemora.zm", role: "ADMIN" },

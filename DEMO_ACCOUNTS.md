@@ -2,7 +2,7 @@
 
 All demo accounts share the same password for ease of demonstration.
 
-**Shared Password:** `Demo1234!`
+**Shared Password:** `password123`
 
 ---
 
@@ -29,7 +29,7 @@ All demo accounts share the same password for ease of demonstration.
 |---|---|
 | **Email** | `bankmanager@hemora.zm` |
 | **Name** | Mulenga Banda |
-| **Role** | BANK_MANAGER |
+| **Role** | MANAGER |
 | **Facility** | National Blood Transfusion Service |
 
 **Permissions:** Inventory read/update/dispatch, requisition read/approve/reject, forecast view/trigger, campaign create/read.
@@ -44,12 +44,12 @@ All demo accounts share the same password for ease of demonstration.
 |---|---|
 | **Email** | `facilityadmin@hemora.zm` |
 | **Name** | Thandiwe Phiri |
-| **Role** | FACILITY_ADMIN |
+| **Role** | MANAGER |
 | **Facility** | Kafue General Hospital |
 
-**Permissions:** Inventory read, requisition create/read/approve, transfusion read, forecast view.
+**Permissions:** Inventory read/update/dispatch, requisition read/approve/reject, forecast view/trigger, campaign create/read.
 
-**Dashboard Features:** Facility overview, staff list, requisition history, blood usage reports, AI forecast access.
+**Dashboard Features:** Blood inventory grid with stock adjustments, requisition approvals, AI-powered demand forecasting, donor mobilisation campaigns.
 
 ---
 
@@ -195,12 +195,35 @@ The database seed script creates:
 
 ## Resetting Demo Data
 
-To reset the database to its initial demo state:
+To reset the database to its initial demo state, run both seed scripts in order:
+
+```bash
+cd hemora-backend
+npx prisma migrate reset --force
+npm run db:seed-auth
+npm run db:seed
+```
+
+**Why two seed steps?** The first command (`db:seed-auth`) creates the Supabase Auth accounts. The second (`db:seed`) creates the database records with matching Auth UUIDs. Both are required — if you skip the auth seed, login will fail with "invalid credentials" because Supabase Auth has no account to authenticate against.
+
+### Manual setup (first time)
+
+If you are setting up the database from scratch for the first time:
 
 ```bash
 cd hemora-backend
 npx prisma db push
+npm run db:seed-auth
 npm run db:seed
 ```
 
-This will push the schema and re-seed all demo data, overwriting any changes made during demonstration.
+### Using Prisma Migrate (recommended for production)
+
+If you prefer the migrate workflow over `db push`:
+
+```bash
+cd hemora-backend
+npx prisma migrate deploy
+npm run db:seed-auth
+npm run db:seed
+```
