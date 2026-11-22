@@ -16,14 +16,14 @@ graph TB
     end
 
     subgraph Backend["hemora-backend (Express.js)"]
-        RA[Supabase Auth]
+        RA[Custom JWT Auth]
         RB[RBAC Middleware]
         RC[Prototype Routes]
         RP[Prisma ORM]
     end
 
-    subgraph Database["Supabase PostgreSQL"]
-        DB[(hemora_db)]
+    subgraph Database["Local PostgreSQL"]
+        DB[(hemora)]
     end
 
     subgraph AI["hemora-ai (FastAPI)"]
@@ -59,7 +59,7 @@ The mobile application built with Expo SDK 55 and React Native.
 | **Forms** | React Hook Form + Zod validation |
 | **Animations** | React Native Reanimated 4.2.1 |
 | **Icons** | Lucide React Native |
-| **Auth Client** | Supabase Auth client with JWT-based sessions |
+| **Auth Client** | Custom REST API client with SecureStore session persistence |
 
 **Structure:**
 - `app/(main)/_dashboard/` — 5 role-specific dashboards
@@ -70,24 +70,28 @@ The mobile application built with Expo SDK 55 and React Native.
 
 ### hemora-backend
 
-The REST API built with Express.js, Supabase JWT verification, and Prisma ORM.
+The REST API built with Express.js, custom JWT authentication, and Prisma ORM.
 
 | Aspect | Detail |
 |---|---|
 | **Framework** | Express.js 5.x |
 | **Language** | TypeScript |
-| **Authentication** | Supabase Auth (JWT verification via JWKs) |
+| **Authentication** | Custom JWT with `jose` library, bcrypt password hashing |
 | **Authorization** | Custom RBAC middleware with role-based permission statements |
 | **ORM** | Prisma 7.x with PostgreSQL adapter |
-| **Database** | Supabase PostgreSQL |
+| **Database** | Local PostgreSQL (`hemora` database) |
 
 **Structure:**
 - `src/server.ts` — Entry point, middleware setup, route mounting
-- `src/lib/jwt-verify.ts` — Supabase JWT verification against JWKs
-- `src/lib/supabase.ts` — Supabase admin client for user lookup
+- `src/lib/auth-jwt.ts` — Custom JWT generation and verification
+- `src/lib/password.ts` — bcrypt password hashing utilities
+- `src/lib/token.ts` — Refresh token generation, hashing, and rotation
+- `src/lib/google-auth.ts` — Google ID token verification using JWKS
 - `src/lib/permissions.ts` — RBAC statement and role definitions
 - `src/lib/prisma.ts` — Prisma client instance
 - `src/middleware/rbac.middleware.ts` — Permission-checking middleware
+- `src/routes/auth.routes.ts` — Auth endpoints (register, login, logout, refresh, etc.)
+- `src/routes/google-auth.routes.ts` — Google OAuth verification endpoint
 - `src/routes/prototype.routes.ts` — All 20 API endpoints
 - `prisma/schema.prisma` — Database schema
 - `prisma/seed/seed.ts` — Demo data seed script
@@ -120,9 +124,15 @@ All endpoints are prefixed with `/api/hemora/`.
 
 | Method | Path | Description | Permission |
 |---|---|---|---|
-| `POST` | `/auth/sign-in` | Sign in with email/password | None (public) |
-| `POST` | `/auth/sign-up` | Register a new account | None (public) |
-| `GET` | `/me` | Get current user profile with invitations | Authenticated |
+| `POST` | `/api/auth/register` | Register a new account | None (public) |
+| `POST` | `/api/auth/login` | Sign in with email/password | None (public) |
+| `POST` | `/api/auth/google/verify` | Sign in with Google | None (public) |
+| `POST` | `/api/auth/logout` | Revoke refresh token | None (public) |
+| `POST` | `/api/auth/refresh` | Rotate refresh token | None (public) |
+| `POST` | `/api/auth/forgot-password` | Request password reset | None (public) |
+| `POST` | `/api/auth/reset-password` | Reset password with token | None (public) |
+| `POST` | `/api/auth/verify-email` | Verify email address | None (public) |
+| `GET` | `/api/auth/me` | Get current user profile | Authenticated |
 
 ### Inventory
 
@@ -253,13 +263,15 @@ All endpoints are prefixed with `/api/hemora/`.
 
 ### Authentication Flow
 1. User enters credentials on the Sign In screen.
-2. Mobile app calls Supabase Auth `signInWithPassword()` to validate credentials.
-3. Supabase returns a JWT token stored in the mobile app's secure storage.
-4. Subsequent API requests include the JWT via the `Authorization: Bearer` header.
-5. Backend verifies the JWT signature against Supabase's public JWKs.
-6. Backend looks up the user in the `user` table for role and profile data.
-7. If the user exists in Auth but not in the database, a minimal DB record is auto-created.
+2. Mobile app calls `POST /api/auth/login` with email and password.
+3. Backend verifies password hash using bcrypt and generates a short-lived JWT access token (15 min) and a refresh token.
+4. Tokens are stored in the mobile app's SecureStore for encrypted persistence.
+5. Subsequent API requests include the JWT via the `Authorization: Bearer` header.
+6. Backend verifies the JWT signature using the shared `JWT_SECRET`.
+7. Backend looks up the user in the `user` table for role and profile data.
 8. RBAC middleware checks the user's role and permissions for each endpoint.
+9. When the access token expires, the mobile app calls `POST /api/auth/refresh` with the refresh token to obtain a new access token.
+10. Refresh tokens use rotation with reuse detection — if a stolen token is reused, all sessions are invalidated.
 
 ### Requisition Creation Flow
 1. Doctor fills the blood request form and submits.

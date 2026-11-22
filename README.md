@@ -1,4 +1,4 @@
-ther# HEMORA — AI-Based Blood Forecasting and Donor Mobilisation System
+# HEMORA — AI-Based Blood Forecasting and Donor Mobilisation System
 
 An academic capstone prototype that integrates real-time blood inventory management, role-based hospital workflows, AI-powered demand forecasting, and donor mobilisation campaigns into a single mobile-first platform.
 
@@ -12,13 +12,28 @@ HEMORA addresses blood shortages and inefficient donor mobilisation by providing
 - **Donor mobilisation campaigns** with automated invitations and response tracking.
 - **Blood request workflows** from doctor/nurse creation through bank manager approval to dispatch.
 
+## Architecture
+
+```
+Mobile (Expo SDK 55) → Express Backend → Local PostgreSQL
+                              ↓
+                        FastAPI AI Service
+```
+
+HEMORA uses a fully independent architecture with no external SaaS dependencies:
+
+- **Mobile**: Expo SDK 55, React Native, TypeScript, Expo Router, SecureStore for session persistence
+- **Backend**: Express.js 5, TypeScript, Prisma ORM, custom JWT authentication with `jose`, bcrypt password hashing
+- **Database**: Local PostgreSQL (`hemora` database), Prisma migrations
+- **AI Service**: Python FastAPI, RandomForest model, API key authentication
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | **Mobile** | Expo SDK 55, React Native, TypeScript, Expo Router |
-| **Backend** | Node.js, Express.js, TypeScript, Supabase Auth |
-| **Database** | Supabase PostgreSQL, Prisma ORM |
+| **Backend** | Node.js, Express.js, TypeScript, Custom JWT Auth |
+| **Database** | Local PostgreSQL, Prisma ORM |
 | **AI Service** | Python, FastAPI, Scikit-learn, Pandas, NumPy |
 | **UI** | Lucide React Native, React Native Reanimated, React Hook Form, Zod, TanStack Query |
 
@@ -26,7 +41,7 @@ HEMORA addresses blood shortages and inefficient donor mobilisation by providing
 
 ```
 Hemora/
-├── hemora-backend/    # Express REST API with Supabase Auth + Prisma
+├── hemora-backend/    # Express REST API with custom JWT Auth + Prisma
 ├── hemora-mobile/     # Expo React Native mobile application
 └── hemora-ai/         # Python FastAPI AI forecasting service
 ```
@@ -34,15 +49,22 @@ Hemora/
 ## Prerequisites
 
 - **Node.js** 18+ and npm
-- **Supabase** project with PostgreSQL database
+- **PostgreSQL** 14+ installed locally
 - **Python** 3.9+ (for AI service)
 - **Expo Go** app on your mobile device or an emulator
 
 ## Setup Instructions
 
-### 1. Supabase Setup
+### 1. Local PostgreSQL Setup
 
-Create a Supabase project at [supabase.com](https://supabase.com) and note your project URL and keys.
+Install PostgreSQL and create the `hemora` database:
+
+```bash
+sudo -u postgres psql -c "CREATE DATABASE hemora;"
+sudo -u postgres psql -c "CREATE ROLE chimputu WITH LOGIN CREATEDB PASSWORD 'password';"
+sudo -u postgres psql -c "GRANT ALL ON DATABASE hemora TO chimputu;"
+sudo -u postgres psql -d hemora -c "GRANT ALL ON SCHEMA public TO chimputu;"
+```
 
 ### 2. Backend
 
@@ -53,16 +75,18 @@ cd hemora-backend
 npm install
 
 # Configure environment
-cp .env.example .env   # or create .env manually
+cp .env.example .env   # then edit .env with your settings
 ```
 
 Set the following environment variables in `.env`:
 
 ```
-SUPABASE_URL="https://<your-project-ref>.supabase.co"
-SUPABASE_SERVICE_ROLE_KEY="<your-service-role-key>"
-DATABASE_URL="postgresql://postgres.<your-project-ref>:<password>@db.<your-project-ref>.supabase.co:5432/postgres?schema=public"
+DATABASE_URL="postgresql://chimputu:password@localhost:5432/hemora?schema=public"
+JWT_SECRET="hemora-jwt-secret-change-this-in-production"
+JWT_REFRESH_SECRET="hemora-refresh-secret-change-this-in-production"
 AI_SERVICE_URL="http://localhost:8000"
+AI_SERVICE_API_KEY="hemora-ai-api-key-change-this-in-production"
+GOOGLE_CLIENT_ID="your-google-client-id.apps.googleusercontent.com"
 PORT=5000
 ```
 
@@ -70,8 +94,8 @@ PORT=5000
 # Generate Prisma client
 npx prisma generate
 
-# Push schema to database
-npx prisma db push
+# Apply migrations to database
+npx prisma migrate dev
 
 # Seed demo data
 npm run db:seed
@@ -93,8 +117,6 @@ npm install
 # Configure environment
 cat > .env << EOF
 EXPO_PUBLIC_API_URL="http://<your-local-ip>:5000"
-EXPO_PUBLIC_SUPABASE_URL="https://<your-project-ref>.supabase.co"
-EXPO_PUBLIC_SUPABASE_KEY="<your-anon-key>"
 EOF
 ```
 
@@ -126,6 +148,27 @@ python3 main.py
 ```
 
 The AI service runs on `http://localhost:8000`.
+
+## Authentication
+
+HEMORA uses custom JWT-based authentication with:
+
+- **bcrypt** password hashing
+- **Short-lived access tokens** (15 minutes)
+- **Refresh token rotation** with reuse detection
+- **Rate limiting** on login and registration endpoints
+- **RBAC** with 5 roles: ADMIN, MANAGER, DOCTOR, NURSE, DONOR
+
+Auth endpoints:
+- `POST /api/auth/register` — Create a new account
+- `POST /api/auth/login` — Sign in with email/password
+- `POST /api/auth/google/verify` — Sign in with Google
+- `POST /api/auth/logout` — Revoke refresh token
+- `POST /api/auth/refresh` — Rotate refresh token
+- `POST /api/auth/forgot-password` — Request password reset
+- `POST /api/auth/reset-password` — Reset password with token
+- `POST /api/auth/verify-email` — Verify email address
+- `GET /api/auth/me` — Get current user profile
 
 ## Demo Accounts
 
@@ -170,7 +213,16 @@ The forecasting service uses a **RandomForestRegressor** trained on 3,328 record
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for details on the ML pipeline.
 
+## Security Considerations
+
+- Passwords are hashed with bcrypt (cost factor 12)
+- Access tokens expire after 15 minutes
+- Refresh tokens use rotation with reuse detection — if a stolen token is reused, all sessions are invalidated
+- Login rate limiting: 5 attempts per 15 minutes per IP
+- All API endpoints require authentication and role-based authorization
+- AI service is protected by API key authentication
+- No Supabase or external SaaS dependencies — full infrastructure control
+
 ## License
 
 This project is an academic capstone prototype developed for educational purposes. It is not intended for production use in a clinical or operational blood bank environment.
-# Hemora

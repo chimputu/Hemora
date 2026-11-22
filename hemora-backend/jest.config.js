@@ -8,6 +8,10 @@ const config = {
   transformIgnorePatterns: [
     "node_modules/(?!(better-auth)/)",
   ],
+  moduleFileExtensions: ["ts", "js", "tsx", "jsx", "json", "node"],
+  moduleNameMapper: {
+    "^(\\.\\.?/.*)\\.js$": "$1",
+  },
 };
 
 export default config;

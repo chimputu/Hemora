@@ -1,6 +1,6 @@
 import { PrismaClient, UserRole, BloodGroup, BloodComponent, Urgency, RequisitionStatus, CampaignStatus, InvitationStatus } from "../../src/generated/prisma";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { createClient } from "@supabase/supabase-js";
+import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -13,44 +13,15 @@ if (!databaseUrl) {
 const adapter = new PrismaPg({ connectionString: databaseUrl });
 const prisma = new PrismaClient({ adapter });
 
-// ── Supabase Admin client for looking up auth user IDs ──
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
-    ? createClient(supabaseUrl, supabaseServiceRoleKey, {
-        auth: { autoRefreshToken: false, persistSession: false },
-    })
-    : null;
-
 // ── Demo password (same for all accounts) ──
 const DEMO_PASSWORD = "Demo1234!";
 
-/**
- * Look up a Supabase Auth user by email and return their UUID.
- * Falls back to a deterministic ID if Supabase Admin is unavailable.
- */
-async function getAuthUserId(email: string): Promise<string> {
-    if (!supabaseAdmin) {
-        return `user-${email.split("@")[0]}`;
-    }
-    try {
-        const { data, error } = await supabaseAdmin.auth.admin.listUsers(0);
-        if (error) {
-            console.error(`  ⚠️  Could not list auth users: ${error.message}`);
-            return `user-${email.split("@")[0]}`;
-        }
-        const authUser = data.users.find((u) => u.email === email);
-        if (authUser) {
-            return authUser.id;
-        }
-    } catch (err: any) {
-        console.error(`  ⚠️  Error looking up auth user ${email}: ${err.message}`);
-    }
-    return `user-${email.split("@")[0]}`;
-}
-
 async function main() {
     console.log("🌱 Starting database seed...");
+
+    // Hash the demo password using Argon2id
+    const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
+    console.log("✅ Password hashed with Argon2id");
 
     // ── Facilities ──
     const generalHospital = await prisma.facility.upsert({
@@ -185,17 +156,16 @@ async function main() {
     const createdUsers: any[] = [];
 
     for (const u of users) {
-        const authUserId = await getAuthUserId(u.email);
         const user = await prisma.user.upsert({
             where: { email: u.email },
-            update: {},
+            update: { passwordHash }, // Update password hash on existing users
             create: {
-                id: authUserId,
                 name: u.name,
                 email: u.email,
                 emailVerified: true,
                 role: u.role,
                 banned: false,
+                passwordHash,
                 bloodGroup: u.bloodGroup,
                 phone: u.phone,
                 eligible: u.eligible ?? true,
@@ -205,11 +175,8 @@ async function main() {
         });
 
         createdUsers.push(user);
-        console.log(`  ✅ User: ${u.name} (${u.email}) — ${u.role} [id: ${authUserId}]`);
+        console.log(`  ✅ User: ${u.name} (${u.email}) — ${u.role} [id: ${user.id}]`);
     }
-
-    // Note: Supabase Auth manages user accounts natively.
-    // Passwords are set via Supabase Auth API, not stored in Prisma.
 
     // ── Blood Inventory ──
     const bloodGroups: BloodGroup[] = [

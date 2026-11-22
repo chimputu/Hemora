@@ -1,22 +1,19 @@
-import { createClient } from "@supabase/supabase-js";
+import { PrismaClient } from "../../src/generated/prisma";
+import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseServiceRoleKey) {
-    console.error("❌ Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env");
-    process.exit(1);
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+    throw new Error("FATAL: DATABASE_URL is not set in .env");
 }
 
-// Service-role client can update user passwords via the Admin API
-const admin = createClient(supabaseUrl, supabaseServiceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-});
+const adapter = new PrismaPg({ connectionString: databaseUrl });
+const prisma = new PrismaClient({ adapter });
 
-const NEW_PASSWORD = "password123";
+const NEW_PASSWORD = "Demo1234!";
 
 const emails = [
     "admin@hemora.zm",
@@ -34,34 +31,23 @@ const emails = [
 async function main() {
     console.log("🔐 Resetting demo account passwords to:", NEW_PASSWORD, "\n");
 
+    const passwordHash = await bcrypt.hash(NEW_PASSWORD, 12);
+
     for (const email of emails) {
         try {
-            // First, find the user by email
-            const { data: users, error: listError } = await admin.auth.admin.listUsers({});
-            
-            if (listError) {
-                console.error(`  ❌ ${email} — failed to list users: ${listError.message}`);
-                continue;
-            }
+            const user = await prisma.user.findUnique({ where: { email } });
 
-            const user = users?.users?.find((u: any) => u.email === email);
-            
             if (!user) {
                 console.log(`  ⏭️  ${email} — user not found, skipping`);
                 continue;
             }
 
-            // Update the password
-            const { data, error } = await admin.auth.admin.updateUserById(
-                user.id,
-                { password: NEW_PASSWORD }
-            );
+            await prisma.user.update({
+                where: { email },
+                data: { passwordHash },
+            });
 
-            if (error) {
-                console.error(`  ❌ ${email} — ${error.message}`);
-            } else {
-                console.log(`  ✅ ${email} — password reset`);
-            }
+            console.log(`  ✅ ${email} — password reset`);
         } catch (err: any) {
             console.error(`  ❌ ${email} — ${err.message}`);
         }
@@ -75,4 +61,7 @@ main()
     .catch((err) => {
         console.error("❌ Password reset failed:", err);
         process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
     });
