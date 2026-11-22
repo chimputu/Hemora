@@ -1,6 +1,6 @@
 import { PrismaClient, UserRole, BloodGroup, BloodComponent, Urgency, RequisitionStatus, CampaignStatus, InvitationStatus } from "../../src/generated/prisma";
-import { hashPassword } from "better-auth/crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
+import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -18,6 +18,10 @@ const DEMO_PASSWORD = "Demo1234!";
 
 async function main() {
     console.log("🌱 Starting database seed...");
+
+    // Hash the demo password using Argon2id
+    const passwordHash = await bcrypt.hash(DEMO_PASSWORD, 12);
+    console.log("✅ Password hashed with Argon2id");
 
     // ── Facilities ──
     const generalHospital = await prisma.facility.upsert({
@@ -81,13 +85,13 @@ async function main() {
         {
             email: "bankmanager@hemora.zm",
             name: "Mulenga Banda",
-            role: UserRole.BANK_MANAGER,
+            role: UserRole.MANAGER,
             facilityId: bloodBank.id,
         },
         {
             email: "facilityadmin@hemora.zm",
             name: "Thandiwe Phiri",
-            role: UserRole.FACILITY_ADMIN,
+            role: UserRole.MANAGER,
             facilityId: generalHospital.id,
         },
         {
@@ -154,14 +158,14 @@ async function main() {
     for (const u of users) {
         const user = await prisma.user.upsert({
             where: { email: u.email },
-            update: {},
+            update: { passwordHash }, // Update password hash on existing users
             create: {
-                id: `user-${u.email.split("@")[0]}`,
                 name: u.name,
                 email: u.email,
                 emailVerified: true,
                 role: u.role,
                 banned: false,
+                passwordHash,
                 bloodGroup: u.bloodGroup,
                 phone: u.phone,
                 eligible: u.eligible ?? true,
@@ -170,25 +174,8 @@ async function main() {
             },
         });
 
-        // Create Better Auth account with password hash
-        const passwordHash = await hashPassword(DEMO_PASSWORD);
-
-        await prisma.account.upsert({
-            where: {
-                id: `account-${u.email.split("@")[0]}`,
-            },
-            update: {},
-            create: {
-                id: `account-${u.email.split("@")[0]}`,
-                userId: user.id,
-                providerId: "credential",
-                accountId: user.id,
-                password: passwordHash,
-            },
-        });
-
         createdUsers.push(user);
-        console.log(`  ✅ User: ${u.name} (${u.email}) — ${u.role}`);
+        console.log(`  ✅ User: ${u.name} (${u.email}) — ${u.role} [id: ${user.id}]`);
     }
 
     // ── Blood Inventory ──
@@ -241,7 +228,7 @@ async function main() {
     // ── Requisitions ──
     const doctor = createdUsers.find((u: any) => u.role === UserRole.DOCTOR);
     const doctor2 = createdUsers.find((u: any) => u.email === "doctor2@hemora.zm");
-    const bankManager = createdUsers.find((u: any) => u.role === UserRole.BANK_MANAGER);
+    const bankManager = createdUsers.find((u: any) => u.email === "bankmanager@hemora.zm");
 
     if (doctor && bankManager) {
         const requisitions = [
@@ -379,8 +366,8 @@ async function main() {
     console.log("\n🔑 Demo Password for all accounts: Demo1234!");
     console.log("\n📋 Demo Accounts:");
     console.log(`  admin@hemora.zm        — System Administrator`);
-    console.log(`  bankmanager@hemora.zm  — Blood Bank Manager`);
-    console.log(`  facilityadmin@hemora.zm — Facility Administrator`);
+    console.log(`  bankmanager@hemora.zm  — Blood Bank Manager (MANAGER role)`);
+    console.log(`  facilityadmin@hemora.zm — Facility Manager (MANAGER role)`);
     console.log(`  doctor@hemora.zm       — Doctor (Kafue General Hospital)`);
     console.log(`  nurse@hemora.zm        — Nurse (Kafue General Hospital)`);
     console.log(`  donor@hemora.zm        — Blood Donor`);

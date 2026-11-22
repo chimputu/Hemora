@@ -8,23 +8,22 @@ HEMORA is a three-tier application consisting of a React Native mobile frontend,
 graph TB
     subgraph Mobile["hemora-mobile (Expo SDK 55)"]
         D1[Donor Dashboard]
-        D2[Bank Manager Dashboard]
+        D2[Manager Dashboard]
         D3[Doctor Dashboard]
         D4[Nurse Dashboard]
         D5[Admin Dashboard]
-        D6[Facility Admin Dashboard]
         A[Auth Screens]
     end
 
     subgraph Backend["hemora-backend (Express.js)"]
-        RA[Better Auth]
+        RA[Custom JWT Auth]
         RB[RBAC Middleware]
         RC[Prototype Routes]
         RP[Prisma ORM]
     end
 
-    subgraph Database["PostgreSQL"]
-        DB[(hemora_db)]
+    subgraph Database["Local PostgreSQL"]
+        DB[(hemora)]
     end
 
     subgraph AI["hemora-ai (FastAPI)"]
@@ -38,7 +37,6 @@ graph TB
     D3 --> RB
     D4 --> RB
     D5 --> RB
-    D6 --> RB
     RB --> RC
     RC --> RP
     RP --> DB
@@ -61,10 +59,10 @@ The mobile application built with Expo SDK 55 and React Native.
 | **Forms** | React Hook Form + Zod validation |
 | **Animations** | React Native Reanimated 4.2.1 |
 | **Icons** | Lucide React Native |
-| **Auth Client** | Better Auth client with cookie-based sessions |
+| **Auth Client** | Custom REST API client with SecureStore session persistence |
 
 **Structure:**
-- `app/(main)/_dashboard/` — 6 role-specific dashboards
+- `app/(main)/_dashboard/` — 5 role-specific dashboards
 - `app/(auth)/` — Sign-in, sign-up, forgot password screens
 - `app/_layout.tsx` — Root layout with QueryClient provider and auth state
 - `components/` — Reusable UI components (EmptyState, StatCard, etc.)
@@ -72,26 +70,31 @@ The mobile application built with Expo SDK 55 and React Native.
 
 ### hemora-backend
 
-The REST API built with Express.js, Better Auth, and Prisma ORM.
+The REST API built with Express.js, custom JWT authentication, and Prisma ORM.
 
 | Aspect | Detail |
 |---|---|
 | **Framework** | Express.js 5.x |
 | **Language** | TypeScript |
-| **Authentication** | Better Auth with credential provider |
-| **Authorization** | Custom RBAC middleware with Better Auth access control |
+| **Authentication** | Custom JWT with `jose` library, bcrypt password hashing |
+| **Authorization** | Custom RBAC middleware with role-based permission statements |
 | **ORM** | Prisma 7.x with PostgreSQL adapter |
-| **Database** | PostgreSQL 14+ |
+| **Database** | Local PostgreSQL (`hemora` database) |
 
 **Structure:**
 - `src/server.ts` — Entry point, middleware setup, route mounting
-- `src/lib/auth.ts` — Better Auth configuration with custom user schema
+- `src/lib/auth-jwt.ts` — Custom JWT generation and verification
+- `src/lib/password.ts` — bcrypt password hashing utilities
+- `src/lib/token.ts` — Refresh token generation, hashing, and rotation
+- `src/lib/google-auth.ts` — Google ID token verification using JWKS
 - `src/lib/permissions.ts` — RBAC statement and role definitions
 - `src/lib/prisma.ts` — Prisma client instance
 - `src/middleware/rbac.middleware.ts` — Permission-checking middleware
+- `src/routes/auth.routes.ts` — Auth endpoints (register, login, logout, refresh, etc.)
+- `src/routes/google-auth.routes.ts` — Google OAuth verification endpoint
 - `src/routes/prototype.routes.ts` — All 20 API endpoints
 - `prisma/schema.prisma` — Database schema
-- `prisma/seed.ts` — Demo data seed script
+- `prisma/seed/seed.ts` — Demo data seed script
 
 ### hemora-ai
 
@@ -121,9 +124,15 @@ All endpoints are prefixed with `/api/hemora/`.
 
 | Method | Path | Description | Permission |
 |---|---|---|---|
-| `POST` | `/auth/sign-in` | Sign in with email/password | None (public) |
-| `POST` | `/auth/sign-up` | Register a new account | None (public) |
-| `GET` | `/me` | Get current user profile with invitations | Authenticated |
+| `POST` | `/api/auth/register` | Register a new account | None (public) |
+| `POST` | `/api/auth/login` | Sign in with email/password | None (public) |
+| `POST` | `/api/auth/google/verify` | Sign in with Google | None (public) |
+| `POST` | `/api/auth/logout` | Revoke refresh token | None (public) |
+| `POST` | `/api/auth/refresh` | Rotate refresh token | None (public) |
+| `POST` | `/api/auth/forgot-password` | Request password reset | None (public) |
+| `POST` | `/api/auth/reset-password` | Reset password with token | None (public) |
+| `POST` | `/api/auth/verify-email` | Verify email address | None (public) |
+| `GET` | `/api/auth/me` | Get current user profile | Authenticated |
 
 ### Inventory
 
@@ -185,7 +194,7 @@ All endpoints are prefixed with `/api/hemora/`.
 - `id` (String, PK), `name`, `email` (unique), `role` (UserRole enum)
 - `bloodGroup` (BloodGroup enum, optional), `phone`, `eligible`
 - `facilityId` (FK → Facility), `licenseNo`
-- `banned`, `banReason`, `banExpires` (Better Auth Admin fields)
+- `banned`, `banReason`, `banExpires` (Admin moderation fields)
 
 **Facility**
 - `id` (String, PK), `name`, `type` (Hospital/Blood Bank/Clinic)
@@ -219,7 +228,7 @@ All endpoints are prefixed with `/api/hemora/`.
 
 | Enum | Values |
 |---|---|
-| **UserRole** | DONOR, NURSE, DOCTOR, BANK_MANAGER, FACILITY_ADMIN, ADMIN |
+| **UserRole** | DONOR, NURSE, DOCTOR, MANAGER, ADMIN |
 | **BloodGroup** | A_POS, A_NEG, B_POS, B_NEG, AB_POS, AB_NEG, O_POS, O_NEG |
 | **BloodComponent** | WHOLE_BLOOD, Packed_RBC, PLASMA, PLATELETS |
 | **Urgency** | ROUTINE, URGENT, EMERGENCY |
@@ -229,35 +238,40 @@ All endpoints are prefixed with `/api/hemora/`.
 
 ## RBAC Permission Matrix
 
-| Permission | DONOR | NURSE | DOCTOR | BANK_MANAGER | FACILITY_ADMIN | ADMIN |
-|---|:---:|:---:|:---:|:---:|:---:|:---:|
-| `inventory: read` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `inventory: update` | | | | ✅ | | ✅ |
-| `inventory: dispatch` | | | | ✅ | | ✅ |
-| `requisition: create` | | ✅ | ✅ | | ✅ | ✅ |
-| `requisition: read` | | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `requisition: approve` | | | ✅ | ✅ | ✅ | ✅ |
-| `requisition: reject` | | | | ✅ | | ✅ |
-| `transfusion: create` | | ✅ | | | | ✅ |
-| `transfusion: read` | | ✅ | ✅ | | ✅ | ✅ |
-| `forecast: view` | | | | ✅ | ✅ | ✅ |
-| `forecast: trigger` | | | | ✅ | | ✅ |
-| `campaign: create` | | | | ✅ | | ✅ |
-| `campaign: read` | | | | ✅ | | ✅ |
-| `user: create` | | | | | | ✅ |
-| `user: list` | | | | | | ✅ |
-| `user: set-role` | | | | | | ✅ |
-| `user: ban` | | | | | | ✅ |
-| `user: delete` | | | | | | ✅ |
+| Permission | DONOR | NURSE | DOCTOR | MANAGER | ADMIN |
+|---|:---:|:---:|:---:|:---:|:---:|
+| `inventory: read` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `inventory: update` | | | | ✅ | ✅ |
+| `inventory: dispatch` | | | | ✅ | ✅ |
+| `requisition: create` | | ✅ | ✅ | | ✅ |
+| `requisition: read` | | ✅ | ✅ | ✅ | ✅ |
+| `requisition: approve` | | | ✅ | ✅ | ✅ |
+| `requisition: reject` | | | | ✅ | ✅ |
+| `transfusion: create` | | ✅ | | | ✅ |
+| `transfusion: read` | | ✅ | ✅ | | ✅ |
+| `forecast: view` | | | | ✅ | ✅ |
+| `forecast: trigger` | | | | ✅ | ✅ |
+| `campaign: create` | | | | ✅ | ✅ |
+| `campaign: read` | | | | ✅ | ✅ |
+| `user: create` | | | | | ✅ |
+| `user: list` | | | | | ✅ |
+| `user: set-role` | | | | | ✅ |
+| `user: ban` | | | | | ✅ |
+| `user: delete` | | | | | ✅ |
 
 ## Data Flow
 
 ### Authentication Flow
 1. User enters credentials on the Sign In screen.
-2. Mobile app calls `POST /api/hemora/auth/sign-in`.
-3. Better Auth validates credentials and sets a session cookie.
-4. Subsequent requests include the cookie automatically.
-5. RBAC middleware checks the user's role and permissions for each endpoint.
+2. Mobile app calls `POST /api/auth/login` with email and password.
+3. Backend verifies password hash using bcrypt and generates a short-lived JWT access token (15 min) and a refresh token.
+4. Tokens are stored in the mobile app's SecureStore for encrypted persistence.
+5. Subsequent API requests include the JWT via the `Authorization: Bearer` header.
+6. Backend verifies the JWT signature using the shared `JWT_SECRET`.
+7. Backend looks up the user in the `user` table for role and profile data.
+8. RBAC middleware checks the user's role and permissions for each endpoint.
+9. When the access token expires, the mobile app calls `POST /api/auth/refresh` with the refresh token to obtain a new access token.
+10. Refresh tokens use rotation with reuse detection — if a stolen token is reused, all sessions are invalidated.
 
 ### Requisition Creation Flow
 1. Doctor fills the blood request form and submits.

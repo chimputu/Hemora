@@ -1,68 +1,79 @@
 import type { Request, Response, NextFunction } from "express";
-import { fromNodeHeaders } from "better-auth/node";
-import { auth } from "../lib/auth.js";
+import { getUserFromToken, extractBearerToken } from "../lib/auth-jwt.js";
+import { userHasPermission } from "../lib/permissions.js";
+import { prisma } from "../lib/prisma.js";
 
 export interface AuthenticatedRequest extends Request {
     user?: {
         id: string;
         email: string;
-        name: string;
+        name?: string;
         role?: string | null;
-        facility?: string | null;
+        facilityId?: string | null;
         bloodGroup?: string | null;
     };
 }
 
-// Simple auth middleware — sets req.user without checking specific permissions
+// Simple auth middleware — verifies JWT and sets req.user
 export function requireAuth() {
     return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
         try {
-            const session = await auth.api.getSession({
-                headers: fromNodeHeaders(req.headers),
-            });
-
-            if (!session || !session.user) {
-                return res.status(401).json({ error: "Unauthorized: Active session required" });
+            const token = extractBearerToken(req.headers.authorization as string);
+            if (!token) {
+                return res.status(401).json({ error: "Unauthorized: Authorization header required" });
             }
 
-            req.user = session.user as AuthenticatedRequest["user"];
+            const user = await getUserFromToken(token);
+            if (!user) {
+                return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+            }
+
+            req.user = {
+                id: user.id,
+                email: user.email,
+                name: user.name || "",
+                role: user.role,
+                facilityId: user.facilityId,
+                bloodGroup: user.bloodGroup,
+            };
             return next();
-        } catch (error) {
-            console.error("Auth Middleware Error:", error);
-            return res.status(500).json({ error: "Internal authorization error" });
+        } catch {
+            return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
         }
     };
 }
 
+// Permission-based middleware — verifies JWT and checks role permissions
 export function requirePermission(permissions: Record<string, string[]>) {
     return async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
         try {
-            const session = await auth.api.getSession({
-                headers: fromNodeHeaders(req.headers),
-            });
-
-            if (!session || !session.user) {
-                return res.status(401).json({ error: "Unauthorized: Active session required" });
+            const token = extractBearerToken(req.headers.authorization as string);
+            if (!token) {
+                return res.status(401).json({ error: "Unauthorized: Authorization header required" });
             }
 
-            const permissionCheck = await auth.api.userHasPermission({
-                body: {
-                    userId: session.user.id,
-                    permissions,
-                },
-            });
+            const user = await getUserFromToken(token);
+            if (!user) {
+                return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+            }
 
-            if (!permissionCheck.success) {
+            if (!userHasPermission(user.role, permissions as Parameters<typeof userHasPermission>[1])) {
                 return res.status(403).json({
                     error: "Forbidden: Insufficient permissions for this role",
                 });
             }
 
-            req.user = session.user as AuthenticatedRequest["user"];
+            req.user = {
+                id: user.id,
+                email: user.email,
+                name: user.name || "",
+                role: user.role,
+                facilityId: user.facilityId,
+                bloodGroup: user.bloodGroup,
+            };
             return next();
-        } catch (error) {
-            console.error("RBAC Middleware Error:", error);
-            return res.status(500).json({ error: "Internal authorization error" });
+        } catch {
+            return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
         }
     };
 }
