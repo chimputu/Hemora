@@ -5,6 +5,7 @@ export const statement = {
     transfusion: ["create", "read"],
     forecast: ["view", "trigger"],
     campaign: ["create", "read"],
+    facility: ["create", "read"],
     user: ["create", "list", "set-role", "ban", "delete"],
 } as const;
 
@@ -23,6 +24,7 @@ export const roles: Record<string, Record<PermissionKey, PermissionValue<Permiss
         transfusion: [],
         forecast: [],
         campaign: ["read"],
+        facility: ["read"],
         user: [],
     },
     NURSE: {
@@ -31,6 +33,7 @@ export const roles: Record<string, Record<PermissionKey, PermissionValue<Permiss
         transfusion: ["create", "read"],
         forecast: [],
         campaign: [],
+        facility: ["read"],
         user: [],
     },
     DOCTOR: {
@@ -39,6 +42,7 @@ export const roles: Record<string, Record<PermissionKey, PermissionValue<Permiss
         transfusion: ["read"],
         forecast: [],
         campaign: [],
+        facility: ["read"],
         user: [],
     },
     MANAGER: {
@@ -47,6 +51,7 @@ export const roles: Record<string, Record<PermissionKey, PermissionValue<Permiss
         transfusion: [],
         forecast: ["view", "trigger"],
         campaign: ["create", "read"],
+        facility: ["create", "read"],
         user: [],
     },
     ADMIN: {
@@ -55,6 +60,7 @@ export const roles: Record<string, Record<PermissionKey, PermissionValue<Permiss
         transfusion: ["create", "read"],
         forecast: ["view", "trigger"],
         campaign: ["create", "read"],
+        facility: ["create", "read"],
         user: ["create", "list", "set-role", "ban", "delete"],
     },
 };
