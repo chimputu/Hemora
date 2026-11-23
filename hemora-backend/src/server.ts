@@ -7,6 +7,8 @@ import prototypeRoutes from "./routes/prototype.routes.js";
 import authRoutes from "./routes/auth.routes.js";
 import googleAuthRoutes from "./routes/google-auth.routes.js";
 
+// Cloudinary is configured via src/config/cloudinary.ts
+
 const app = express();
 const port = Number(process.env.PORT) || 5000;
 

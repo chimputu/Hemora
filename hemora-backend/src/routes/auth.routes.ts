@@ -18,6 +18,11 @@ function userSummary(user: any) {
         role: user.role,
         bloodGroup: user.bloodGroup,
         phone: user.phone,
+        whatsappNumber: user.whatsappNumber,
+        phoneNumber: user.phoneNumber,
+        location: user.location,
+        age: user.age,
+        pushToken: user.pushToken,
         eligible: user.eligible,
         facilityId: user.facilityId,
         emailVerified: user.emailVerified,
@@ -27,7 +32,7 @@ function userSummary(user: any) {
 // ── POST /auth/register ──
 router.post("/register", authRateLimit(), async (req: Request, res: Response) => {
     try {
-        const { email, password, name, bloodGroup } = req.body;
+        const { email, password, name, bloodGroup, whatsappNumber, phoneNumber, location, age } = req.body;
 
         // Validation
         if (!email || !password || !name) {
@@ -62,6 +67,10 @@ router.post("/register", authRateLimit(), async (req: Request, res: Response) =>
                 emailVerified: false,
                 banned: false,
                 bloodGroup: bloodGroup || null,
+                whatsappNumber: whatsappNumber || null,
+                phoneNumber: phoneNumber || null,
+                location: location || null,
+                age: age ? parseInt(age, 10) : null,
             },
         });
 

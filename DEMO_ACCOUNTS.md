@@ -2,7 +2,7 @@
 
 All demo accounts share the same password for ease of demonstration.
 
-**Shared Password:** `password123`
+**Shared Password:** `Demo1234!`
 
 ---
 
