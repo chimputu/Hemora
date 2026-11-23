@@ -78,7 +78,7 @@ async function main() {
     const users = [
         {
             email: "admin@hemora.zm",
-            name: "System Administrator",
+            name: "Chimputu Kafiswe",
             role: UserRole.ADMIN,
             facilityId: null,
         },
@@ -365,7 +365,7 @@ async function main() {
     console.log(`  Campaign Invitations: ${await prisma.campaignInvitation.count()}`);
     console.log("\n🔑 Demo Password for all accounts: Demo1234!");
     console.log("\n📋 Demo Accounts:");
-    console.log(`  admin@hemora.zm        — System Administrator`);
+    console.log(`  admin@hemora.zm        — Chimputu Kafiswe`);
     console.log(`  bankmanager@hemora.zm  — Blood Bank Manager (MANAGER role)`);
     console.log(`  facilityadmin@hemora.zm — Facility Manager (MANAGER role)`);
     console.log(`  doctor@hemora.zm       — Doctor (Kafue General Hospital)`);

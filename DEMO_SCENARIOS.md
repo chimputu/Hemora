@@ -183,7 +183,7 @@ Step-by-step walkthroughs for demonstrating each of the 6 roles in HEMORA. Each 
 1. **Login**
    - Sign out of the nurse account.
    - Enter email `admin@hemora.zm` and password `Demo1234!`.
-   - **Expected:** Redirected to the Admin Dashboard with "System Administrator" displayed.
+   - **Expected:** Redirected to the Admin Dashboard with "Chimputu Kafiswe" displayed.
 
 2. **View System Statistics**
    - Observe the stats grid.
