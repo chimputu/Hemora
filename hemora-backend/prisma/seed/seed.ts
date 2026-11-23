@@ -72,6 +72,18 @@ async function main() {
         },
     });
 
+    const kawambwaHospital = await prisma.facility.upsert({
+        where: { id: "facility-kawambwa" },
+        update: {},
+        create: {
+            id: "facility-kawambwa",
+            name: "Kawambwa General Hospital",
+            type: "Hospital",
+            address: "Kawambwa District, Luapula Province",
+            phone: "+260772231300",
+        },
+    });
+
     console.log("✅ Facilities seeded");
 
     // ── Demo Users ──
@@ -273,28 +285,28 @@ async function main() {
             {
                 requesterId: doctor.id,
                 patientName: "Patient D. Phiri",
-                patientRef: "GH-2024-003",
+                patientRef: "NBT-2024-001",
                 bloodGroup: BloodGroup.O_NEG,
                 component: BloodComponent.PLASMA,
                 unitsNeeded: 1,
                 urgency: Urgency.URGENT,
                 status: RequisitionStatus.APPROVED,
                 clinicalNote: "Coagulation disorder, factor replacement",
-                facilityId: generalHospital.id,
+                facilityId: bloodBank.id,
                 approvedBy: bankManager.id,
                 approvedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
             },
             {
-                requesterId: doctor.id,
+                requesterId: doctor2?.id || doctor.id,
                 patientName: "Patient E. Musonda",
-                patientRef: "GH-2024-004",
+                patientRef: "CH-2024-001",
                 bloodGroup: BloodGroup.AB_POS,
                 component: BloodComponent.PLATELETS,
                 unitsNeeded: 2,
                 urgency: Urgency.ROUTINE,
                 status: RequisitionStatus.REJECTED,
                 clinicalNote: "Platelet transfusion for thrombocytopenia",
-                facilityId: generalHospital.id,
+                facilityId: ruralClinic.id,
                 approvedBy: bankManager.id,
                 approvedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
             },
