@@ -21,6 +21,12 @@ model User {
   banExpires               DateTime?
   bloodGroup               BloodGroup?
   phone                    String?
+  whatsappNumber           String?
+  phoneNumber              String?
+  location                 String?
+  age                      Int?
+  pushToken                String?
+  avatarUrl                String?
   lastDonation             DateTime?
   eligible                 Boolean              @default(true)
   facilityId               String?
@@ -115,18 +121,29 @@ model TransfusionLog {
 }
 
 model Campaign {
-  id          String               @id @default(cuid())
-  title       String
-  description String?
-  bloodGroup  BloodGroup?
-  targetUnits Int                  @default(10)
-  status      CampaignStatus       @default(DRAFT)
-  startDate   DateTime?
-  endDate     DateTime?
-  createdBy   String
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  invitations CampaignInvitation[]
+  id               String               @id @default(cuid())
+  title            String
+  description      String?
+  location         String?
+  bloodGroup       BloodGroup?
+  targetUnits      Int                  @default(10)
+  status           CampaignStatus       @default(DRAFT)
+  startDate        DateTime?
+  endDate          DateTime?
+  createdBy        String
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  imageUrl         String?
+  locationName     String?
+  latitude         Float?
+  longitude        Float?
+  contactName      String?
+  contactPhone     String?
+  contactWhatsApp  String?
+  services         String[]             @default([])
+  availableItems   String[]             @default([])
+  notificationType String               @default("info")
+  invitations      CampaignInvitation[]
 
   @@index([status])
   @@map("campaign")

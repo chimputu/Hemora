@@ -67,8 +67,13 @@ export function rateLimit(options?: { windowMs?: number; maxRequests?: number })
 
 /**
  * Stricter rate limiter for authentication endpoints.
- * Limits login attempts to 5 per 15 minutes per IP.
+ * In development, allows 100 requests per 15 minutes to avoid blocking during testing.
+ * In production, limits to 10 per 15 minutes to prevent brute-force attacks.
  */
 export function authRateLimit() {
-  return rateLimit({ windowMs: 15 * 60 * 1000, maxRequests: 5 });
+  const isDev = process.env.NODE_ENV !== "production";
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    maxRequests: isDev ? 100 : 10,
+  });
 }
