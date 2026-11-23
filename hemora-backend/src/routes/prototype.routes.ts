@@ -219,6 +219,47 @@ router.patch("/requisitions/:id/status", requirePermission({ requisition: ["appr
     }
 });
 
+// 6a. POST Distribute Blood to Facility (Admin-only shortcut)
+// Sets the requisition status to DISPATCHED and deducts from inventory
+router.post("/requisitions/:id/distribute", requirePermission({ requisition: ["approve"] }), async (req, res) => {
+    try {
+        const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+        const updated = await prisma.$transaction(async (tx) => {
+            const record = await tx.requisition.findUnique({ where: { id } });
+            if (!record) throw new Error("Requisition not found");
+
+            if (record.status === "DISPATCHED") {
+                throw new Error("This requisition has already been dispatched");
+            }
+
+            const stock = await tx.bloodInventory.findUnique({
+                where: { bloodGroup_component: { bloodGroup: record.bloodGroup, component: record.component } },
+            });
+            if (!stock || stock.units < record.unitsNeeded) {
+                throw new Error(`Insufficient ${record.bloodGroup} ${record.component} stock for distribution`);
+            }
+            await tx.bloodInventory.update({
+                where: { id: stock.id },
+                data: { units: { decrement: record.unitsNeeded } },
+            });
+
+            return tx.requisition.update({
+                where: { id },
+                data: {
+                    status: "DISPATCHED",
+                    approvedBy: (req as AuthenticatedRequest).user?.id || null,
+                    approvedAt: new Date(),
+                },
+            });
+        });
+
+        res.json({ message: "Blood distributed successfully", requisition: updated });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message || "Failed to distribute blood" });
+    }
+});
+
 // 7. POST Blood Demand Forecast
 router.post("/forecast", requirePermission({ forecast: ["view"] }), async (req, res) => {
     try {
