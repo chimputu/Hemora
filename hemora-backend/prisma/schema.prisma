@@ -21,6 +21,12 @@ model User {
   banExpires               DateTime?
   bloodGroup               BloodGroup?
   phone                    String?
+  whatsappNumber           String?
+  phoneNumber              String?
+  location                 String?
+  age                      Int?
+  pushToken                String?
+  avatarUrl                String?
   lastDonation             DateTime?
   eligible                 Boolean              @default(true)
   facilityId               String?
@@ -124,6 +130,7 @@ model Campaign {
   id               String               @id @default(cuid())
   title            String
   description      String?
+  location         String?
   bloodGroup       BloodGroup?
   targetUnits      Int                  @default(10)
   status           CampaignStatus       @default(DRAFT)
@@ -132,7 +139,6 @@ model Campaign {
   createdBy        String
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
-  location         String?
   availableItems   String[]             @default([])
   contactName      String?
   contactPhone     String?
