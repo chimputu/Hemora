@@ -178,7 +178,7 @@ The seed script creates 10 demo accounts. All accounts share the same password:
 
 | Email | Name | Role |
 |---|---|---|
-| `admin@hemora.zm` | Chimputu Kafiswe | System Admin |
+| `admin@hemora.zm` | Chimputu Kafiswe Jr | System Admin |
 | `bankmanager@hemora.zm` | Mulenga Banda | Manager |
 | `facilityadmin@hemora.zm` | Thandiwe Phiri | Manager |
 | `doctor@hemora.zm` | Dr. Chanda Mwale | Doctor |

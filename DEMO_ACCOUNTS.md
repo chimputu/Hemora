@@ -13,7 +13,7 @@ All demo accounts share the same password for ease of demonstration.
 | Field | Value |
 |---|---|
 | **Email** | `admin@hemora.zm` |
-| **Name** | Chimputu Kafiswe |
+| **Name** | Chimputu Kafiswe Jr |
 | **Role** | ADMIN |
 | **Facility** | None (system-wide) |
 

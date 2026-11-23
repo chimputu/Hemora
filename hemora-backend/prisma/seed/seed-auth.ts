@@ -17,7 +17,7 @@ const prisma = new PrismaClient({ adapter });
 const DEMO_PASSWORD = "Demo1234!";
 
 const users = [
-    { email: "admin@hemora.zm", role: UserRole.ADMIN, name: "Chimputu Kafiswe" },
+    { email: "admin@hemora.zm", role: UserRole.ADMIN, name: "Chimputu Kafiswe Jr" },
     { email: "bankmanager@hemora.zm", role: UserRole.MANAGER, name: "Mulenga Banda" },
     { email: "facilityadmin@hemora.zm", role: UserRole.MANAGER, name: "Thandiwe Phiri" },
     { email: "doctor@hemora.zm", role: UserRole.DOCTOR, name: "Dr. Chanda Mwale" },
