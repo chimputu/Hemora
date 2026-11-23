@@ -9,6 +9,28 @@ import { upload } from "../lib/upload.js";
 const router = Router();
 const ALL_GROUPS: BloodGroup[] = ["A_POS", "A_NEG", "B_POS", "B_NEG", "AB_POS", "AB_NEG", "O_POS", "O_NEG"];
 
+// Simple in-memory cache for dashboard endpoints (TTL-based, no external deps)
+const cache = new Map<string, { data: unknown; expiresAt: number }>();
+const CACHE_TTL_MS = 1000 * 60 * 2; // 2 minutes
+
+function getCached<T>(key: string): T | undefined {
+    const entry = cache.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+        cache.delete(key);
+        return undefined;
+    }
+    return entry.data as T;
+}
+function setCache(key: string, data: unknown) {
+    cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+function invalidateCache(pattern: string) {
+    for (const key of cache.keys()) {
+        if (key.includes(pattern)) cache.delete(key);
+    }
+}
+
 // 1. GET Blood Inventory (with component support)
 router.get("/inventory", requirePermission({ inventory: ["read"] }), async (_req, res) => {
     try {
@@ -347,7 +369,7 @@ router.get("/forecast/model-info", requirePermission({ forecast: ["view"] }), as
 });
 
 // 8. GET Facilities
-router.get("/facilities", requirePermission({ inventory: ["read"] }), async (_req, res) => {
+router.get("/facilities", requirePermission({ facility: ["read"] }), async (_req, res) => {
     try {
         const facilities = await prisma.facility.findMany({
             include: {
@@ -359,6 +381,84 @@ router.get("/facilities", requirePermission({ inventory: ["read"] }), async (_re
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Failed to load facilities" });
+    }
+});
+
+// 8a. GET Facility by ID
+router.get("/facilities/:id", requirePermission({ facility: ["read"] }), async (req, res) => {
+    try {
+        const facilityId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+        const facility = await prisma.facility.findUnique({
+            where: { id: facilityId },
+            include: {
+                users: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                        bloodGroup: true,
+                        phone: true,
+                    },
+                },
+                requisitions: {
+                    orderBy: { createdAt: "desc" },
+                    take: 10,
+                    include: {
+                        requester: { select: { name: true, role: true } },
+                    },
+                },
+                _count: { select: { users: true, requisitions: true } },
+            },
+        });
+
+        if (!facility) {
+            return res.status(404).json({ error: "Facility not found" });
+        }
+
+        res.json(facility);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to load facility details" });
+    }
+});
+
+// 8b. POST Create Facility (ADMIN, MANAGER only)
+router.post("/facilities", requirePermission({ facility: ["create"] }), async (req, res) => {
+    try {
+        const { name, type, address, phone } = req.body as {
+            name: string;
+            type: string;
+            address?: string;
+            phone?: string;
+        };
+
+        if (!name || !type) {
+            return res.status(400).json({ error: "Name and type are required" });
+        }
+
+        // Validate type
+        const validTypes = ["Hospital", "Clinic", "Blood Bank", "Health Center", "Mobile Unit"];
+        if (!validTypes.includes(type)) {
+            return res.status(400).json({ error: `Invalid type. Must be one of: ${validTypes.join(", ")}` });
+        }
+
+        const facility = await prisma.facility.create({
+            data: {
+                name,
+                type,
+                address: address || null,
+                phone: phone || null,
+            },
+        });
+
+        // Invalidate dashboard counts cache since facility count changed
+        invalidateCache("dashboard");
+
+        res.status(201).json(facility);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to create facility" });
     }
 });
 
@@ -485,6 +585,8 @@ router.post("/campaigns", requirePermission({ campaign: ["create"] }), upload.si
             where: { id: campaign.id },
             include: { _count: { select: { invitations: true } } },
         });
+        // Invalidate dashboard cache so the new campaign shows up immediately
+        invalidateCache("dashboard");
         res.status(201).json(campaignWithCount);
     } catch (error) {
         console.error(error);
@@ -906,6 +1008,49 @@ router.get("/stats", requirePermission({ inventory: ["read"] }), async (_req, re
     }
 });
 
+// 12b. GET Dashboard Summary Counts (cached)
+router.get("/dashboard-counts", requirePermission({ inventory: ["read"] }), async (_req, res) => {
+    try {
+        // Check cache first
+        const cached = getCached<{
+            totalCampaigns: number;
+            activeCampaigns: number;
+            totalDonors: number;
+            totalRequisitions: number;
+            urgentRequisitions: number;
+            totalInventory: number;
+            totalFacilities: number;
+            totalUsers: number;
+            totalNurses: number;
+            totalDoctors: number;
+            totalManagers: number;
+        }>("dashboard-counts");
+        if (cached) return res.json(cached);
+
+        const [totalCampaigns, activeCampaigns, totalDonors, totalRequisitions, urgentRequisitions, inventory, totalFacilities, totalUsers, totalNurses, totalDoctors, totalManagers] = await Promise.all([
+            prisma.campaign.count(),
+            prisma.campaign.count({ where: { status: "ACTIVE" } }),
+            prisma.user.count({ where: { role: "DONOR" } }),
+            prisma.requisition.count(),
+            prisma.requisition.count({ where: { urgency: "URGENT" } }),
+            prisma.bloodInventory.findMany(),
+            prisma.facility.count(),
+            prisma.user.count(),
+            prisma.user.count({ where: { role: "NURSE" } }),
+            prisma.user.count({ where: { role: "DOCTOR" } }),
+            prisma.user.count({ where: { role: "MANAGER" } }),
+        ]);
+        const totalInventory = inventory.reduce((sum, s) => sum + s.units, 0);
+
+        const result = { totalCampaigns, activeCampaigns, totalDonors, totalRequisitions, urgentRequisitions, totalInventory, totalFacilities, totalUsers, totalNurses, totalDoctors, totalManagers };
+        setCache("dashboard-counts", result);
+        res.json(result);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to load dashboard counts" });
+    }
+});
+
 // 13. GET Facility Requisitions
 router.get("/facilities/:id/requisitions", requirePermission({ requisition: ["read"] }), async (req, res) => {
     try {
@@ -1056,27 +1201,34 @@ router.patch("/notifications/read-all", requireAuth(), async (req: Authenticated
     }
 });
 
-// 18. GET Search (campaigns, facilities, requisitions)
+// 18. GET Search (campaigns, facilities, requisitions, users)
 router.get("/search", requireAuth(), async (req: AuthenticatedRequest, res) => {
     try {
         const q = (req.query.q as string || "").trim().toLowerCase();
         const type = (req.query.type as string || "").toLowerCase();
+        const role = (req.query.role as string || "").toUpperCase();
+        const location = (req.query.location as string || "").trim().toLowerCase();
 
-        if (!q) {
-            return res.json({ campaigns: [], facilities: [], requisitions: [] });
+        if (!q && !role && !location) {
+            return res.json({ campaigns: [], facilities: [], requisitions: [], users: [] });
         }
 
         const results: any = {};
 
         // Search campaigns
         if (!type || type === "campaign") {
+            const campaignWhere: any = {};
+            if (q) {
+                campaignWhere.OR = [
+                    { title: { contains: q, mode: "insensitive" } },
+                    { description: { contains: q, mode: "insensitive" } },
+                ];
+            }
+            if (location) {
+                campaignWhere.location = { contains: location, mode: "insensitive" };
+            }
             const campaigns = await prisma.campaign.findMany({
-                where: {
-                    OR: [
-                        { title: { contains: q, mode: "insensitive" } },
-                        { description: { contains: q, mode: "insensitive" } },
-                    ],
-                },
+                where: campaignWhere,
                 orderBy: { createdAt: "desc" },
                 take: 20,
             });
@@ -1085,14 +1237,19 @@ router.get("/search", requireAuth(), async (req: AuthenticatedRequest, res) => {
 
         // Search facilities
         if (!type || type === "facility" || type === "hospital") {
+            const facilityWhere: any = {};
+            if (q) {
+                facilityWhere.OR = [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { type: { contains: q, mode: "insensitive" } },
+                    { address: { contains: q, mode: "insensitive" } },
+                ];
+            }
+            if (location) {
+                facilityWhere.address = { contains: location, mode: "insensitive" };
+            }
             const facilities = await prisma.facility.findMany({
-                where: {
-                    OR: [
-                        { name: { contains: q, mode: "insensitive" } },
-                        { type: { contains: q, mode: "insensitive" } },
-                        { address: { contains: q, mode: "insensitive" } },
-                    ],
-                },
+                where: facilityWhere,
                 orderBy: { name: "asc" },
                 take: 20,
             });
@@ -1139,6 +1296,44 @@ router.get("/search", requireAuth(), async (req: AuthenticatedRequest, res) => {
                 },
             });
             results.requisitions = requisitions;
+        }
+
+        // Search users (ADMIN and MANAGER only)
+        if ((!type || type === "user") && (req.user!.role === "ADMIN" || req.user!.role === "MANAGER")) {
+            const userWhere: any = {};
+            if (q) {
+                userWhere.OR = [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { email: { contains: q, mode: "insensitive" } },
+                    { phone: { contains: q, mode: "insensitive" } },
+                ];
+            }
+            if (role) {
+                userWhere.role = role;
+            }
+            if (location) {
+                userWhere.OR = [
+                    { location: { contains: location, mode: "insensitive" } },
+                    { facility: { address: { contains: location, mode: "insensitive" } } },
+                ];
+            }
+            const users = await prisma.user.findMany({
+                where: userWhere,
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                    bloodGroup: true,
+                    phone: true,
+                    location: true,
+                    eligible: true,
+                    facility: { select: { id: true, name: true, type: true, address: true } },
+                },
+                orderBy: { name: "asc" },
+                take: 20,
+            });
+            results.users = users;
         }
 
         res.json(results);
@@ -1192,9 +1387,14 @@ router.patch("/me", requireAuth(), async (req: AuthenticatedRequest, res) => {
     }
 });
 
-// 20. POST Join a Campaign (create or find PENDING invitation)
+// 20. POST Join a Campaign (create or find PENDING invitation) — DONOR role only
 router.post("/campaigns/:id/join", requireAuth(), async (req: AuthenticatedRequest, res) => {
     try {
+        // Only DONOR role can join campaigns
+        if (req.user?.role !== "DONOR") {
+            return res.status(403).json({ error: "Only donors can join campaigns" });
+        }
+
         const campaignId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
 
         const campaign = await prisma.campaign.findUnique({
@@ -1289,6 +1489,39 @@ router.patch("/invitations/:id/cancel", requireAuth(), async (req: Authenticated
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Failed to cancel invitation" });
+    }
+});
+
+// 22a. DELETE Campaign (ADMIN only)
+router.delete("/campaigns/:id", requirePermission({ campaign: ["create"] }), async (req, res) => {
+    try {
+        const campaignId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+
+        const campaign = await prisma.campaign.findUnique({
+            where: { id: campaignId },
+        });
+
+        if (!campaign) {
+            return res.status(404).json({ error: "Campaign not found" });
+        }
+
+        // Delete invitations first
+        await prisma.campaignInvitation.deleteMany({
+            where: { campaignId },
+        });
+
+        // Delete the campaign
+        await prisma.campaign.delete({
+            where: { id: campaignId },
+        });
+
+        // Invalidate dashboard cache
+        invalidateCache("dashboard");
+
+        res.json({ message: "Campaign deleted successfully" });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Failed to delete campaign" });
     }
 });
 
