@@ -21,12 +21,6 @@ model User {
   banExpires               DateTime?
   bloodGroup               BloodGroup?
   phone                    String?
-  whatsappNumber           String?
-  phoneNumber              String?
-  location                 String?
-  age                      Int?
-  pushToken                String?
-  avatarUrl                String?
   lastDonation             DateTime?
   eligible                 Boolean              @default(true)
   facilityId               String?
@@ -36,6 +30,12 @@ model User {
   emailVerificationExpires DateTime?
   passwordResetToken       String?
   passwordResetExpires     DateTime?
+  age                      Int?
+  location                 String?
+  whatsappNumber           String?
+  phoneNumber              String?
+  pushToken                String?
+  avatarUrl                String?
   campaignInvitations      CampaignInvitation[]
   googleAccounts           GoogleAccount[]
   notifications            Notification[]
@@ -124,7 +124,6 @@ model Campaign {
   id               String               @id @default(cuid())
   title            String
   description      String?
-  location         String?
   bloodGroup       BloodGroup?
   targetUnits      Int                  @default(10)
   status           CampaignStatus       @default(DRAFT)
@@ -133,16 +132,17 @@ model Campaign {
   createdBy        String
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
-  imageUrl         String?
-  locationName     String?
-  latitude         Float?
-  longitude        Float?
+  location         String?
+  availableItems   String[]             @default([])
   contactName      String?
   contactPhone     String?
   contactWhatsApp  String?
-  services         String[]             @default([])
-  availableItems   String[]             @default([])
+  imageUrl         String?
+  latitude         Float?
+  locationName     String?
+  longitude        Float?
   notificationType String               @default("info")
+  services         String[]             @default([])
   invitations      CampaignInvitation[]
 
   @@index([status])
